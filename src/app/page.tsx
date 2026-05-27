@@ -1,66 +1,36 @@
-import Image from "next/image";
-import styles from "./page.module.css";
-
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
+    <main className="min-h-screen bg-[#091413] text-[#E2F5ED] flex items-center justify-center px-6">
+      <section className="max-w-3xl text-center">
+        <p className="mb-4 text-sm uppercase tracking-[0.35em] text-[#B0E4CC]">
+          Verdant Terminal
+        </p>
+
+        <h1 className="text-5xl font-bold tracking-tight sm:text-6xl">
+          Portfolio Tracker & Stock Screener
+        </h1>
+
+        <p className="mt-6 text-lg text-[#9FCDBA]">
+          Secure portfolio tracking, transaction ledgers, watchlists and
+          quantitative stock screening for modern investors.
+        </p>
+
+        <div className="mt-10 flex justify-center gap-4">
           <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/login"
+            className="rounded-lg bg-[#B0E4CC] px-5 py-3 font-semibold text-[#091413] transition hover:bg-[#B0E4CC]/90"
           >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
+            Launch App
           </a>
+
           <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="/register"
+            className="rounded-lg border border-[#285A48] px-5 py-3 font-semibold text-[#E2F5ED] transition hover:bg-[#285A48]/30"
           >
-            Documentation
+            Create Account
           </a>
         </div>
-      </main>
-    </div>
+      </section>
+    </main>
   );
 }
