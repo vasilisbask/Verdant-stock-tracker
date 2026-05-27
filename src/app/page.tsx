@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import PillHeader from "../components/layout/PillHeader";
 import Footer from "../components/layout/Footer";
 
-
 /* Types */
 interface Tick { 
   sym: string; 
@@ -273,8 +272,6 @@ function ScreenerPreview({ tape }: { tape: Tick[] }) {
             Open screener →
           </a>
         </div>
-      </section>
-    </main>
 
         <div className="screener-table-card">
           {/* Table header */}
