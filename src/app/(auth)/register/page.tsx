@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
-
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -13,14 +13,53 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    setError("");
+    setSuccess("");
+
     if (password !== confirmPassword) {
-      alert("Passwords do not match!");
+      setError("Passwords do not match.");
       return;
     }
-    console.log("Registration submission:", { name, email, password });
-    alert("Auth logic will be connected soon! This is a placeholder.");
+
+    setIsLoading(true);
+
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+          email,
+          password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || "Registration failed.");
+        return;
+      }
+
+      setSuccess("Account created successfully. Redirecting to login...");
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 1000);
+    } catch {
+      setError("Something went wrong. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -29,18 +68,15 @@ export default function RegisterPage() {
 
       <div className="layout-content-wrapper" style={{ flexDirection: "column" }}>
         <div className="terminal-card" style={{ maxWidth: 420, width: "100%", margin: "0 auto" }}>
-          {/* Back to Home Link */}
-          <a href="/" className="back-home-link">
+          <Link href="/" className="back-home-link">
             ← Back to Home
-          </a>
+          </Link>
 
-          {/* Title & Description */}
           <h1 className="auth-heading">Create Account</h1>
           <p className="auth-subheading">
             Sign up to start tracking equities, building watchlists, and screening the market.
           </p>
 
-          {/* Main credentials form */}
           <form onSubmit={handleSubmit}>
             <div className="form-group">
               <label className="form-label" htmlFor="name">
@@ -120,19 +156,33 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            <button type="submit" className="btn-primary btn-lg btn-full" style={{ marginTop: 12 }}>
-              Create Account
+            {error && (
+              <p className="text-sm text-red-400" style={{ marginTop: 12 }}>
+                {error}
+              </p>
+            )}
+
+            {success && (
+              <p className="text-sm text-[#B0E4CC]" style={{ marginTop: 12 }}>
+                {success}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="btn-primary btn-lg btn-full"
+              style={{ marginTop: 12 }}
+              disabled={isLoading}
+            >
+              {isLoading ? "Creating account..." : "Create Account"}
             </button>
           </form>
 
-
-
-          {/* Registration link footer */}
           <p className="auth-footer">
             Already have an account?{" "}
-            <a href="/login" className="auth-link">
+            <Link href="/login" className="auth-link">
               Sign in →
-            </a>
+            </Link>
           </p>
         </div>
       </div>
