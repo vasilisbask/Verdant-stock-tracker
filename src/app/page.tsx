@@ -273,6 +273,8 @@ function ScreenerPreview({ tape }: { tape: Tick[] }) {
             Open screener →
           </a>
         </div>
+      </section>
+    </main>
 
         <div className="screener-table-card">
           {/* Table header */}

@@ -10,18 +10,27 @@
   },
   "dependencies": {
     "@tailwindcss/postcss": "^4.3.0",
+    "@prisma/adapter-pg": "^7.8.0",
+    "@prisma/client": "^7.8.0",
+    "bcryptjs": "^3.0.3",
+    "decimal.js": "^10.6.0",
     "next": "16.2.6",
     "postcss": "^8.5.15",
+    "next-auth": "^4.24.14",
+    "pg": "^8.21.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "tailwindcss": "^4.3.0"
+    "tailwindcss": "^4.3.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "prisma": "^7.8.0",
     "typescript": "^5"
   }
 }
