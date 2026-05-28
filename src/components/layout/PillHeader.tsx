@@ -15,10 +15,18 @@ export default function PillHeader() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Determine navigation links based on auth state
   const links = session
-    ? ["Dashboard", "Screener", "Watchlist", "Markets"]
-    : ["Screener", "Watchlist", "Markets"];
+    ? [
+        { label: "Portfolio", href: "/dashboard" },
+        { label: "Screener", href: "/screener" },
+        { label: "Watchlist", href: "/watchlist" },
+        { label: "Markets", href: "/markets" },
+      ]
+    : [
+        { label: "Screener", href: "/screener" },
+        { label: "Watchlist", href: "/watchlist" },
+        { label: "Markets", href: "/markets" },
+      ];
 
   return (
     <header className={`pill-header ${scrolled ? "scrolled" : ""}`}>
@@ -37,8 +45,8 @@ export default function PillHeader() {
         {/* Navigation */}
         <nav className="nav-links">
           {links.map(link => (
-            <a key={link} href={`/${link.toLowerCase()}`} className="nav-link">
-              {link}
+            <a key={link.href} href={link.href} className="nav-link">
+              {link.label}
             </a>
           ))}
 

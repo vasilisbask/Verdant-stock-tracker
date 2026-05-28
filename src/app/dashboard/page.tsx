@@ -1,14 +1,13 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
-import PillHeader from "@/components/layout/PillHeader";
-import Footer from "@/components/layout/Footer";
-import { getCompanyMeta } from "@/lib/stocks";
-import DetailModal from "@/components/layout/DetailModal";
 
-/* Types─*/
+import DetailModal from "@/components/layout/DetailModal";
+import Footer from "@/components/layout/Footer";
+import PillHeader from "@/components/layout/PillHeader";
+
 interface Quote {
   sym: string;
   price: string;
@@ -17,23 +16,57 @@ interface Quote {
   up: boolean;
   vol: string;
   companyName?: string;
-  blinkClass?: string;
 }
 
-interface WatchItem {
+interface PortfolioTransaction {
+  id: string;
   sym: string;
-  target?: string;
+  companyName: string;
+  quantity: string;
+  price: string;
+  transactionDate: string;
 }
 
-/* Market session─ */
-function isMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.getDay();
-  if (day === 0 || day === 6) return false;
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const et = new Date(utc + 3600000 * -4);
-  const h = et.getHours() + et.getMinutes() / 60;
-  return h >= 9.5 && h < 16;
+interface Holding {
+  sym: string;
+  companyName: string;
+  quantity: number;
+  avgPrice: number;
+  invested: number;
+  currentPrice: number;
+  currentValue: number;
+  gainLoss: number;
+  gainLossPct: number;
+  lots: number;
+  hasLivePrice: boolean;
+}
+
+const currency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  maximumFractionDigits: 2,
+});
+
+const compactCurrency = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  notation: "compact",
+  maximumFractionDigits: 2,
+});
+
+const sharesFormatter = new Intl.NumberFormat("en-US", {
+  maximumFractionDigits: 4,
+});
+
+function parseQuotePrice(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatPercent(value: number) {
+  if (!Number.isFinite(value)) return "0.00%";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
 function getGreeting(): string {
@@ -43,9 +76,13 @@ function getGreeting(): string {
   return "Good evening";
 }
 
-/* Stat card */
 function StatCard({
-  label, value, sub, up, loading, statusClass, icon
+  label,
+  value,
+  sub,
+  up,
+  loading,
+  statusClass,
 }: {
   label: string;
   value: string;
@@ -53,18 +90,21 @@ function StatCard({
   up?: boolean;
   loading?: boolean;
   statusClass?: string;
-  icon?: React.ReactNode;
 }) {
   return (
     <div className={`db-stat-card ${statusClass || ""}`}>
-      <span className="db-stat-label">
-        {icon && <span className="db-stat-icon" style={{ display: "inline-flex", color: "var(--brand-light)" }}>{icon}</span>}
-        {label}
-      </span>
+      <span className="db-stat-label">{label}</span>
       {loading ? (
-        <span className="skeleton-cell pulse" style={{ width: 72, height: 20, borderRadius: 2, marginTop: 4 }} />
+        <span
+          className="skeleton-cell pulse"
+          style={{ width: 92, height: 20, borderRadius: 2, marginTop: 4 }}
+        />
       ) : (
-        <span className={`db-stat-value ${up === true ? "up" : up === false ? "down" : ""}`}>
+        <span
+          className={`db-stat-value ${
+            up === true ? "up" : up === false ? "down" : ""
+          }`}
+        >
           {value}
         </span>
       )}
@@ -73,379 +113,661 @@ function StatCard({
   );
 }
 
-/* Quick link card */
-function QuickLink({ href, label, desc, icon }: { href: string; label: string; desc: string; icon: React.ReactNode }) {
+function QuickLink({
+  href,
+  label,
+  desc,
+}: {
+  href: string;
+  label: string;
+  desc: string;
+}) {
   return (
     <Link href={href} className="db-quick-link">
-      <span className="db-quick-icon">{icon}</span>
       <span className="db-quick-label">{label}</span>
       <span className="db-quick-desc">{desc}</span>
     </Link>
   );
 }
 
-/* Main page */
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
-  const [quotes, setQuotes]       = useState<Record<string, Quote>>({});
-  const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
-  const [isLoading, setLoading]   = useState(true);
-  const [isError, setError]       = useState(false);
-  const [now, setNow]             = useState(new Date());
-  const [mounted, setMounted]     = useState(false);
+  const [transactions, setTransactions] = useState<PortfolioTransaction[]>([]);
+  const [quotes, setQuotes] = useState<Record<string, Quote>>({});
+  const [isLoadingPortfolio, setIsLoadingPortfolio] = useState(true);
+  const [isLoadingQuotes, setIsLoadingQuotes] = useState(false);
+  const [isError, setIsError] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
-  /* Live clock */
-  useEffect(() => {
-    setMounted(true);
-    const iv = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(iv);
-  }, []);
+  const [symbol, setSymbol] = useState("");
+  const [quantity, setQuantity] = useState("");
+  const [price, setPrice] = useState("");
 
-  /* Load watchlist from localStorage */
-  useEffect(() => {
+  const loadPortfolio = useCallback(async () => {
+    if (status !== "authenticated") return;
+
+    setIsLoadingPortfolio(true);
     try {
-      const stored = JSON.parse(localStorage.getItem("verdant_watchlist_v1") || "[]");
-      setWatchlist(stored);
-    } catch { setWatchlist([]); }
-  }, []);
+      const res = await fetch("/api/portfolio");
+      if (!res.ok) {
+        throw new Error("Could not load portfolio");
+      }
 
-  /* Fetch live quotes */
+      const json = await res.json();
+      setTransactions(json.data ?? []);
+      setIsError(false);
+    } catch {
+      setIsError(true);
+    } finally {
+      setIsLoadingPortfolio(false);
+    }
+  }, [status]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function fetchInitialPortfolio() {
+      if (status !== "authenticated") return;
+
+      try {
+        const res = await fetch("/api/portfolio");
+        if (!active) return;
+
+        if (!res.ok) {
+          throw new Error("Could not load portfolio");
+        }
+
+        const json = await res.json();
+        setTransactions(json.data ?? []);
+        setIsError(false);
+      } catch {
+        if (active) setIsError(true);
+      } finally {
+        if (active) setIsLoadingPortfolio(false);
+      }
+    }
+
+    fetchInitialPortfolio();
+
+    return () => {
+      active = false;
+    };
+  }, [status]);
+
+  const symbolsKey = useMemo(() => {
+    return Array.from(new Set(transactions.map((tx) => tx.sym)))
+      .sort()
+      .join(",");
+  }, [transactions]);
+
   useEffect(() => {
     let active = true;
 
     async function fetchQuotes() {
+      if (!symbolsKey) {
+        setQuotes({});
+        setIsLoadingQuotes(false);
+        return;
+      }
+
+      setIsLoadingQuotes(true);
       try {
-        const watched = watchlist.map(w => w.sym);
-        // Fallback: If watchlist is empty, fetch the Top 50 most active stocks dynamically
-        const url = watched.length > 0 
-          ? `/api/stocks/quotes?symbols=${watched.join(",")}`
-          : `/api/stocks/quotes`;
-        
-        const res = await fetch(url);
+        const res = await fetch(`/api/stocks/quotes?symbols=${symbolsKey}`);
         if (!active) return;
-        if (res.ok) {
-          const json = await res.json();
-          setError(false);
-          const map: Record<string, Quote> = {};
-          (json.data as Quote[]).forEach(q => {
-            map[q.sym] = q;
-          });
-          setQuotes(prev => {
-            const next = { ...prev };
-            Object.entries(map).forEach(([sym, newQ]) => {
-              const old = prev[sym];
-              if (!old) { next[sym] = newQ; return; }
-              const oldP = parseFloat(old.price);
-              const newP = parseFloat(newQ.price);
-              if (!isNaN(oldP) && !isNaN(newP) && oldP !== newP) {
-                const blinkClass = newP > oldP ? "blink-g" : "blink-r";
-                next[sym] = { ...newQ, blinkClass };
-                setTimeout(() => {
-                  setQuotes(cur => ({ ...cur, [sym]: { ...cur[sym], blinkClass: "" } }));
-                }, 1000);
-              } else {
-                next[sym] = newQ;
-              }
-            });
-            return next;
-          });
-        } else {
-          setError(true);
+
+        if (!res.ok) {
+          throw new Error("Quote feed unavailable");
         }
+
+        const json = await res.json();
+        const bySymbol: Record<string, Quote> = {};
+        (json.data as Quote[]).forEach((quote) => {
+          bySymbol[quote.sym] = quote;
+        });
+        setQuotes(bySymbol);
+        setIsError(false);
       } catch {
-        setError(true);
+        if (active) setIsError(true);
       } finally {
-        if (active) setLoading(false);
+        if (active) setIsLoadingQuotes(false);
       }
     }
 
     fetchQuotes();
-    const iv = setInterval(fetchQuotes, 15000);
-    return () => { active = false; clearInterval(iv); };
-  }, [watchlist]);
+    const interval = setInterval(fetchQuotes, 15000);
 
-  /* Derived stats */
-  const allQuotes = Object.values(quotes);
-  const sorted    = useMemo(() =>
-    [...allQuotes].sort((a, b) => parseFloat(b.pct) - parseFloat(a.pct)),
-    [allQuotes]
-  );
-  const bestStock  = sorted[0];
-  const worstStock = sorted[sorted.length - 1];
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [symbolsKey]);
 
-  const watchedQuotes = watchlist
-    .map(w => quotes[w.sym])
-    .filter(Boolean) as Quote[];
+  const holdings = useMemo<Holding[]>(() => {
+    const map = new Map<
+      string,
+      {
+        sym: string;
+        companyName: string;
+        quantity: number;
+        invested: number;
+        lots: number;
+      }
+    >();
 
-  const portfolioUp   = watchedQuotes.filter(q => q.up).length;
-  const portfolioDown = watchedQuotes.filter(q => !q.up).length;
+    transactions.forEach((tx) => {
+      const txQuantity = Number(tx.quantity);
+      const txPrice = Number(tx.price);
+      if (!Number.isFinite(txQuantity) || !Number.isFinite(txPrice)) return;
 
-  const open       = isMarketOpen();
-  const greeting   = getGreeting();
-  const firstName  = session?.user?.name?.split(" ")[0] ?? "Trader";
-  const timeStr    = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const existing = map.get(tx.sym) ?? {
+        sym: tx.sym,
+        companyName: tx.companyName || tx.sym,
+        quantity: 0,
+        invested: 0,
+        lots: 0,
+      };
+
+      existing.quantity += txQuantity;
+      existing.invested += txQuantity * txPrice;
+      existing.lots += 1;
+      map.set(tx.sym, existing);
+    });
+
+    return Array.from(map.values())
+      .map((item) => {
+        const quotePrice = parseQuotePrice(quotes[item.sym]?.price);
+        const avgPrice = item.quantity > 0 ? item.invested / item.quantity : 0;
+        const currentPrice = quotePrice ?? avgPrice;
+        const currentValue = item.quantity * currentPrice;
+        const gainLoss = currentValue - item.invested;
+        const gainLossPct =
+          item.invested > 0 ? (gainLoss / item.invested) * 100 : 0;
+
+        return {
+          ...item,
+          companyName: quotes[item.sym]?.companyName ?? item.companyName,
+          avgPrice,
+          currentPrice,
+          currentValue,
+          gainLoss,
+          gainLossPct,
+          hasLivePrice: quotePrice !== null,
+        };
+      })
+      .sort((a, b) => b.currentValue - a.currentValue);
+  }, [transactions, quotes]);
+
+  const totals = useMemo(() => {
+    const invested = holdings.reduce((sum, item) => sum + item.invested, 0);
+    const currentValue = holdings.reduce(
+      (sum, item) => sum + item.currentValue,
+      0
+    );
+    const gainLoss = currentValue - invested;
+    const gainLossPct = invested > 0 ? (gainLoss / invested) * 100 : 0;
+    const liveCount = holdings.filter((item) => item.hasLivePrice).length;
+
+    return {
+      invested,
+      currentValue,
+      gainLoss,
+      gainLossPct,
+      liveCount,
+    };
+  }, [holdings]);
+
+  const bestHolding = holdings.reduce<Holding | null>((best, item) => {
+    if (!best) return item;
+    return item.gainLossPct > best.gainLossPct ? item : best;
+  }, null);
+
+  const recentTransactions = transactions.slice(0, 5);
+  const firstName = session?.user?.name?.split(" ")[0] ?? "Trader";
+  const isAuthenticated = status === "authenticated";
+  const hasHoldings = holdings.length > 0;
+
+  async function fillCurrentPrice() {
+    const cleanSymbol = symbol.trim().toUpperCase();
+    if (!cleanSymbol) {
+      setFormError("Enter a ticker first.");
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/stocks/quotes?symbols=${cleanSymbol}`);
+      if (!res.ok) throw new Error("Quote not found");
+      const json = await res.json();
+      const quote = (json.data as Quote[])[0];
+      const quotePrice = parseQuotePrice(quote?.price);
+
+      if (!quotePrice) throw new Error("Quote not found");
+
+      setQuotes((current) => ({
+        ...current,
+        [quote.sym]: quote,
+      }));
+      setSymbol(quote.sym);
+      setPrice(quotePrice.toFixed(2));
+      setFormError("");
+    } catch {
+      setFormError("Could not fetch the latest price for that ticker.");
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const cleanSymbol = symbol.trim().toUpperCase();
+    const numericQuantity = Number(quantity);
+    const numericPrice = Number(price);
+
+    if (!cleanSymbol || !numericQuantity || !numericPrice) {
+      setFormError("Fill symbol, quantity, and buy price.");
+      return;
+    }
+
+    if (numericQuantity <= 0 || numericPrice <= 0) {
+      setFormError("Quantity and buy price must be greater than zero.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setFormError("");
+
+    try {
+      const res = await fetch("/api/portfolio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          symbol: cleanSymbol,
+          quantity: numericQuantity,
+          price: numericPrice,
+          companyName: quotes[cleanSymbol]?.companyName,
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error("Could not add purchase");
+      }
+
+      setSymbol("");
+      setQuantity("");
+      setPrice("");
+      await loadPortfolio();
+    } catch {
+      setFormError("Could not save this purchase. Try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function removeHolding(sym: string) {
+    try {
+      const res = await fetch(`/api/portfolio?symbol=${sym}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Could not remove holding");
+      }
+
+      await loadPortfolio();
+    } catch {
+      setFormError(`Could not remove ${sym}.`);
+    }
+  }
 
   return (
     <>
       <PillHeader />
 
-      <main className="db-page">
-
-        {/* Greeting header */}
-        <header className="db-header u0">
+      <main className="db-page pf-page">
+        <header className="db-header pf-header u0">
           <div className="db-header-left">
-            <p className="db-greeting">{greeting}, {firstName}</p>
-            <h1 className="db-title">Dashboard</h1>
+            <p className="db-greeting">{getGreeting()}, {firstName}</p>
+            <h1 className="db-title">Portfolio</h1>
           </div>
           <div className="db-header-right">
-            {mounted ? (
-              <>
-                <div className="db-clock">{timeStr}</div>
-                <div className={`mk-session-badge ${open ? "open" : "closed"}`}>
-                  <span className={`live-dot ${open ? "mk-dot--open" : "mk-dot--closed"}`} />
-                  {open ? "NYSE Open" : "Market Closed"}
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="db-clock">—</div>
-                <div className="mk-session-badge closed">
-                  <span className="live-dot mk-dot--closed" />
-                  Market Status —
-                </div>
-              </>
-            )}
+            <div className={`mk-session-badge ${isError ? "closed" : "open"}`}>
+              <span
+                className={`live-dot ${
+                  isError ? "mk-dot--closed" : "mk-dot--open"
+                }`}
+              />
+              {isError ? "Feed Offline" : "Live Pricing"}
+            </div>
           </div>
         </header>
 
-        {/* Stat bar */}
-        <div className="db-stat-row u1">
-          <StatCard
-            label="Watchlist"
-            value={`${watchlist.length} stock${watchlist.length !== 1 ? "s" : ""}`}
-            sub={watchlist.length > 0 ? `${portfolioUp} up · ${portfolioDown} down` : "None added yet"}
-            loading={false}
-            statusClass="stat-live"
-            icon={
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M2.5 4H13.5M2.5 8H13.5M2.5 12H13.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-              </svg>
-            }
-          />
-          <StatCard
-            label="Best Performer"
-            value={bestStock ? `${bestStock.sym} +${bestStock.pct}` : "—"}
-            sub={bestStock ? bestStock.price : undefined}
-            up={true}
-            loading={isLoading}
-            statusClass={bestStock ? "stat-up" : undefined}
-            icon={
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 13L8 8L13 13M3 8L8 3L13 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            }
-          />
-          <StatCard
-            label="Worst Performer"
-            value={worstStock ? `${worstStock.sym} ${worstStock.pct}` : "—"}
-            sub={worstStock ? worstStock.price : undefined}
-            up={false}
-            loading={isLoading}
-            statusClass={worstStock ? "stat-down" : undefined}
-            icon={
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M3 3L8 8L13 3M3 8L8 13L13 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            }
-          />
-          <StatCard
-            label="Data Feed"
-            value={isError ? "OFFLINE" : isLoading ? "CONNECTING" : "LIVE"}
-            sub="Refreshes every 15s"
-            up={isError ? false : undefined}
-            loading={false}
-            statusClass={isError ? "stat-down" : isLoading ? "stat-warn" : "stat-live"}
-            icon={
-              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.8"/>
-                <circle cx="8" cy="8" r="2" fill="currentColor"/>
-              </svg>
-            }
-          />
-        </div>
-
-        <div className="db-body">
-
-          {/* Watchlist panel */}
-          <section className="db-section db-section--wide u2">
-            <div className="db-section-header">
-              <h2 className="db-section-title">Your Watchlist</h2>
-              <Link href="/watchlist" className="db-section-link">Manage →</Link>
+        {!isAuthenticated ? (
+          <section className="db-section pf-auth-card u1">
+            <span className="pf-auth-kicker">Portfolio access</span>
+            <h2 className="pf-auth-title">Sign in to track your holdings</h2>
+            <p className="pf-auth-copy">
+              Your purchases, quantities, cost basis, and unrealized P/L are
+              stored under your account.
+            </p>
+            <div className="pf-auth-actions">
+              <Link href="/login" className="btn-primary">
+                Sign in
+              </Link>
+              <Link href="/register" className="btn-secondary">
+                Create account
+              </Link>
+            </div>
+          </section>
+        ) : (
+          <>
+            <div className="db-stat-row pf-stat-row u1">
+              <StatCard
+                label="Invested"
+                value={currency.format(totals.invested)}
+                sub="Total cost basis"
+                loading={isLoadingPortfolio}
+                statusClass="stat-live"
+              />
+              <StatCard
+                label="Current Value"
+                value={currency.format(totals.currentValue)}
+                sub={`${totals.liveCount}/${holdings.length} live priced`}
+                loading={isLoadingPortfolio || isLoadingQuotes}
+                statusClass="stat-live"
+              />
+              <StatCard
+                label="Unrealized P/L"
+                value={currency.format(totals.gainLoss)}
+                sub={formatPercent(totals.gainLossPct)}
+                up={totals.gainLoss >= 0}
+                loading={isLoadingPortfolio || isLoadingQuotes}
+                statusClass={totals.gainLoss >= 0 ? "stat-up" : "stat-down"}
+              />
+              <StatCard
+                label="Positions"
+                value={`${holdings.length}`}
+                sub={
+                  bestHolding
+                    ? `Best: ${bestHolding.sym} ${formatPercent(
+                        bestHolding.gainLossPct
+                      )}`
+                    : "No holdings yet"
+                }
+                loading={isLoadingPortfolio}
+              />
             </div>
 
-            {watchlist.length === 0 ? (
-              <div className="db-empty">
-                <p className="db-empty-text">No stocks in your watchlist yet.</p>
-                <Link href="/watchlist" className="btn-primary btn-sm">Add stocks →</Link>
-              </div>
-            ) : (
-              <div className="db-watch-table">
-                <div className="db-watch-header">
-                  <span>Symbol</span>
-                  <span>Company</span>
-                  <span className="right">Price</span>
-                  <span className="right">Change</span>
-                  <span className="right">Target</span>
-                </div>
-                {watchlist.map((item, i) => {
-                  const q = quotes[item.sym];
-                  const currentPrice = q ? parseFloat(q.price.replace(/[^0-9.]/g, "")) : 0;
-                  const targetPrice = item.target ? parseFloat(item.target) : 0;
-                  const pct = targetPrice > 0 && currentPrice > 0
-                    ? Math.min(100, Math.round((currentPrice / targetPrice) * 100))
-                    : 0;
-                  const isNear = pct >= 90;
-
-                  return (
-                    <div
-                      key={item.sym}
-                      className="db-watch-row"
-                      style={{ animationDelay: `${i * 0.04}s`, cursor: "pointer" }}
-                      onClick={() => setSelectedSymbol(item.sym)}
-                    >
-                      <span className="db-watch-sym">{item.sym}</span>
-                      <span className="db-watch-name">{q?.companyName ?? item.sym}</span>
-                      {q ? (
-                        <>
-                          <span className={`db-watch-price right ${q.blinkClass || ""}`}>{q.price}</span>
-                          <span className={`db-watch-chg right ${q.blinkClass || ""} ${q.up ? "up" : "down"}`}>
-                            {q.chg} ({q.pct})
-                          </span>
-                          <span className="db-watch-target right">
-                            {item.target ? (
-                              <span className="db-target-gauge-wrap" title={`${pct}% of target reached`}>
-                                <span>${targetPrice.toFixed(2)}</span>
-                                <span className="db-target-gauge-track">
-                                  <span 
-                                    className={`db-target-gauge-fill ${isNear ? "near" : "far"}`} 
-                                    style={{ width: `${pct}%` }} 
-                                  />
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="db-watch-no-target">—</span>
-                            )}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <span className="right"><span className="skeleton-cell pulse" style={{ width: 52, height: 11, marginLeft: "auto" }} /></span>
-                          <span className="right"><span className="skeleton-cell pulse" style={{ width: 44, height: 11, marginLeft: "auto" }} /></span>
-                          <span className="right">—</span>
-                        </>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          {/* Right column */}
-          <div className="db-sidebar">
-
-            {/* Top movers from all stocks */}
-            <section className="db-section u3">
+            <section className="db-section pf-trade-panel u2">
               <div className="db-section-header">
-                <h2 className="db-section-title">Today's Movers</h2>
-                <Link href="/markets" className="db-section-link">Full view →</Link>
+                <h2 className="db-section-title">Add Purchase</h2>
+                <span className="pf-panel-note">Buy transactions only</span>
               </div>
-              <div className="db-movers">
-                {isLoading ? (
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <div key={i} className="db-mover-row db-mover-row--skeleton">
-                      <span className="skeleton-cell pulse" style={{ width: 12, height: 11 }} />
-                      <span className="skeleton-cell pulse" style={{ width: 36, height: 11 }} />
-                      <span className="skeleton-cell pulse" style={{ width: 64, height: 11 }} />
-                      <span className="skeleton-cell pulse" style={{ width: 40, height: 11, marginLeft: "auto" }} />
-                    </div>
-                  ))
-                ) : sorted.slice(0, 5).map(q => (
-                  <div 
-                    key={q.sym} 
-                    className="db-mover-row"
-                    style={{ cursor: "pointer" }}
-                    onClick={() => setSelectedSymbol(q.sym)}
+              <form className="pf-trade-form" onSubmit={handleSubmit}>
+                <label className="pf-field">
+                  <span className="pf-field-label">Ticker</span>
+                  <input
+                    className="input-text pf-input"
+                    value={symbol}
+                    onChange={(event) => {
+                      setSymbol(event.target.value.toUpperCase());
+                      setFormError("");
+                    }}
+                    placeholder="AAPL"
+                    maxLength={12}
+                  />
+                </label>
+                <label className="pf-field">
+                  <span className="pf-field-label">Quantity</span>
+                  <input
+                    className="input-text pf-input"
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={quantity}
+                    onChange={(event) => {
+                      setQuantity(event.target.value);
+                      setFormError("");
+                    }}
+                    placeholder="10"
+                  />
+                </label>
+                <label className="pf-field">
+                  <span className="pf-field-label">Buy Price</span>
+                  <input
+                    className="input-text pf-input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={price}
+                    onChange={(event) => {
+                      setPrice(event.target.value);
+                      setFormError("");
+                    }}
+                    placeholder="185.25"
+                  />
+                </label>
+                <div className="pf-form-actions">
+                  <button
+                    type="button"
+                    className="btn-secondary pf-live-btn"
+                    onClick={fillCurrentPrice}
                   >
-                    <span className={`db-mover-indicator ${q.up ? "up" : "down"}`}>
-                      {q.up ? "▲" : "▼"}
-                    </span>
-                    <span className="db-mover-sym">{q.sym}</span>
-                    <span className="db-mover-name">{q?.companyName ?? q.sym}</span>
-                    <span className={`db-mover-pct ${q.up ? "up" : "down"}`}>
-                      {q.up ? "+" : ""}{q.pct}
-                    </span>
+                    Use live price
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary pf-submit-btn"
+                    disabled={isSubmitting}
+                  >
+                    {isSubmitting ? "Adding..." : "Add buy"}
+                  </button>
+                </div>
+              </form>
+              {formError && <p className="pf-form-error">{formError}</p>}
+            </section>
+
+            <div className="db-body pf-body">
+              <section className="db-section db-section--wide u3">
+                <div className="db-section-header">
+                  <h2 className="db-section-title">Holdings</h2>
+                  <span className="pf-panel-note">
+                    Prices refresh every 15s
+                  </span>
+                </div>
+
+                {isLoadingPortfolio ? (
+                  <div className="pf-loading">
+                    {Array.from({ length: 5 }).map((_, index) => (
+                      <span key={index} className="skeleton-cell pulse" />
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
+                ) : !hasHoldings ? (
+                  <div className="db-empty pf-empty">
+                    <p className="db-empty-text">
+                      Add your first purchase to see cost basis, market value,
+                      and unrealized P/L.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="pf-holdings-table">
+                    <div className="pf-holdings-header">
+                      <span>Stock</span>
+                      <span className="right">Qty</span>
+                      <span className="right">Avg Cost</span>
+                      <span className="right">Current</span>
+                      <span className="right">Invested</span>
+                      <span className="right">Value</span>
+                      <span className="right">P/L</span>
+                      <span className="right">Actions</span>
+                    </div>
 
-            {/* Quick links */}
-            <section className="db-section u4">
-              <div className="db-section-header">
-                <h2 className="db-section-title">Quick Access</h2>
-              </div>
-              <div className="db-quick-links">
-                <QuickLink 
-                  href="/screener" 
-                  label="Screener"  
-                  desc="Filter & sort all equities"   
-                  icon={
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <rect x="1.5" y="1.5" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.8"/>
-                      <path d="M1.5 5.5H14.5M5.5 1.5V14.5" stroke="currentColor" strokeWidth="1.8"/>
-                    </svg>
-                  } 
-                />
-                <QuickLink 
-                  href="/watchlist" 
-                  label="Watchlist" 
-                  desc="Manage tracked stocks" 
-                  icon={
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.8"/>
-                      <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.8"/>
-                      <path d="M8 0.5V2.5M8 13.5V15.5M0.5 8H2.5M13.5 8H15.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-                    </svg>
-                  } 
-                />
-                <QuickLink 
-                  href="/markets"   
-                  label="Markets"   
-                  desc="Overview & daily movers"   
-                  icon={
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M1 14.5H15M2.5 11.5L6.5 6L10 9L14.5 2.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  } 
-                />
-              </div>
-            </section>
+                    {holdings.map((holding, index) => (
+                      <div
+                        key={holding.sym}
+                        className="pf-holdings-row"
+                        style={{ animationDelay: `${index * 0.04}s` }}
+                      >
+                        <button
+                          className="pf-stock-cell"
+                          onClick={() => setSelectedSymbol(holding.sym)}
+                        >
+                          <span className="pf-stock-symbol">
+                            {holding.sym}
+                          </span>
+                          <span className="pf-stock-name">
+                            {holding.companyName}
+                          </span>
+                        </button>
+                        <span className="right">
+                          {sharesFormatter.format(holding.quantity)}
+                        </span>
+                        <span className="right">
+                          {currency.format(holding.avgPrice)}
+                        </span>
+                        <span className="right">
+                          {holding.hasLivePrice
+                            ? currency.format(holding.currentPrice)
+                            : "Pending"}
+                        </span>
+                        <span className="right">
+                          {currency.format(holding.invested)}
+                        </span>
+                        <span className="right">
+                          {currency.format(holding.currentValue)}
+                        </span>
+                        <span
+                          className={`right pf-pl ${
+                            holding.gainLoss >= 0 ? "up" : "down"
+                          }`}
+                        >
+                          {currency.format(holding.gainLoss)}
+                          <small>{formatPercent(holding.gainLossPct)}</small>
+                        </span>
+                        <span className="right">
+                          <button
+                            className="pf-remove-btn"
+                            onClick={() => removeHolding(holding.sym)}
+                            aria-label={`Remove ${holding.sym}`}
+                          >
+                            Remove
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
 
-          </div>
-        </div>
+              <div className="db-sidebar">
+                <section className="db-section u3">
+                  <div className="db-section-header">
+                    <h2 className="db-section-title">Allocation</h2>
+                  </div>
+                  <div className="pf-allocation-list">
+                    {holdings.length === 0 ? (
+                      <p className="pf-sidebar-empty">No positions yet.</p>
+                    ) : (
+                      holdings.map((holding) => {
+                        const width =
+                          totals.currentValue > 0
+                            ? (holding.currentValue / totals.currentValue) * 100
+                            : 0;
+                        return (
+                          <div key={holding.sym} className="pf-allocation-row">
+                            <div className="pf-allocation-meta">
+                              <span>{holding.sym}</span>
+                              <strong>
+                                {compactCurrency.format(holding.currentValue)}
+                              </strong>
+                            </div>
+                            <div className="pf-allocation-track">
+                              <span
+                                className="pf-allocation-fill"
+                                style={{ width: `${Math.max(width, 4)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </section>
 
-        <p className="sc-footnote u4">
-          Prices refresh every 15 seconds · Powered by Yahoo Finance · For informational purposes only
-        </p>
+                <section className="db-section u4">
+                  <div className="db-section-header">
+                    <h2 className="db-section-title">Recent Buys</h2>
+                  </div>
+                  <div className="pf-lots-list">
+                    {recentTransactions.length === 0 ? (
+                      <p className="pf-sidebar-empty">No transactions yet.</p>
+                    ) : (
+                      recentTransactions.map((tx) => (
+                        <div key={tx.id} className="pf-lot-row">
+                          <div>
+                            <span className="pf-lot-symbol">{tx.sym}</span>
+                            <span className="pf-lot-date">
+                              {new Date(tx.transactionDate).toLocaleDateString(
+                                "en-US",
+                                {
+                                  month: "short",
+                                  day: "numeric",
+                                }
+                              )}
+                            </span>
+                          </div>
+                          <div className="pf-lot-values">
+                            <span>{sharesFormatter.format(Number(tx.quantity))}</span>
+                            <strong>{currency.format(Number(tx.price))}</strong>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="db-section u4">
+                  <div className="db-section-header">
+                    <h2 className="db-section-title">Quick Access</h2>
+                  </div>
+                  <div className="db-quick-links pf-quick-links">
+                    <QuickLink
+                      href="/screener"
+                      label="Screener"
+                      desc="Find new ideas"
+                    />
+                    <QuickLink
+                      href="/watchlist"
+                      label="Watchlist"
+                      desc="Track tickers"
+                    />
+                    <QuickLink
+                      href="/markets"
+                      label="Markets"
+                      desc="Daily overview"
+                    />
+                  </div>
+                </section>
+              </div>
+            </div>
+
+            <p className="sc-footnote u4">
+              Portfolio figures are informational only. Current values use the
+              latest available Yahoo Finance quote.
+            </p>
+          </>
+        )}
       </main>
 
       <Footer />
 
       {selectedSymbol && (
-        <DetailModal symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />
+        <DetailModal
+          symbol={selectedSymbol}
+          onClose={() => setSelectedSymbol(null)}
+        />
       )}
     </>
   );
