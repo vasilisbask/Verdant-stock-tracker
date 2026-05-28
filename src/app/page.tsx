@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import PillHeader from "../components/layout/PillHeader";
 import Footer from "../components/layout/Footer";
+import DetailModal from "../components/layout/DetailModal";
 
 /* Types */
 interface Tick { 
@@ -14,6 +16,7 @@ interface Tick {
   vol: string; 
   pe?: string; 
   mkt?: string; 
+  companyName?: string;
   blinkClass?: string;
 }
 
@@ -51,14 +54,17 @@ function Hero({
   isMock, 
   isLoading,
   isError,
-  errorMessage
+  errorMessage,
+  onSelectSymbol
 }: { 
   tape: Tick[]; 
   isMock: boolean; 
   isLoading: boolean; 
   isError: boolean;
   errorMessage: string;
+  onSelectSymbol: (sym: string) => void;
 }) {
+  const { data: session } = useSession();
   const [dateStr, setDateStr] = useState("27 May 2026 · 14:32 ET");
   useEffect(() => {
     const d = new Date();
@@ -69,7 +75,7 @@ function Hero({
 
   return (
     <section className="hero-section">
-      {/* LEFT: editorial typographic statement */}
+      {/* editorial typographic statement */}
       <div className="hero-left">
         <div className="market-status-indicator u0">
           <span className="live-dot footer-logo-dot" />
@@ -89,13 +95,20 @@ function Hero({
         </p>
 
         <div className="hero-actions u3">
-          <a href="/register" className="btn-primary btn-lg">
-            Start tracking →
-          </a>
+          {session ? (
+            <a href="/watchlist" className="btn-primary btn-lg">
+              Go to Watchlist →
+            </a>
+          ) : (
+            <a href="/register" className="btn-primary btn-lg">
+              Start tracking →
+            </a>
+          )}
           <a href="#how" className="link-subtle">
             How it works ↓
           </a>
         </div>
+
 
         <div className="trust-row u4">
           {[
@@ -145,7 +158,7 @@ function Hero({
               {errorMessage || "Real-time stock feeds are currently unavailable."}
             </p>
             <div className="quotes-offline-instructions">
-              Ensure that <code>FINNHUB_API_KEY</code> is correctly set in <code>.env.local</code> and check server logs.
+              Please verify your internet connection or check server logs.
             </div>
           </div>
         ) : tape.length > 0 ? (
@@ -153,7 +166,8 @@ function Hero({
             <div
               key={t.sym}
               className="quotes-row"
-              style={{ animationDelay: `${i * 0.04}s` }}
+              style={{ animationDelay: `${i * 0.04}s`, cursor: "pointer" }}
+              onClick={() => onSelectSymbol(t.sym)}
             >
               <span className="quotes-cell symbol">{t.sym}</span>
               <span className={`quotes-cell price ${t.blinkClass || ""}`}>{t.price}</span>
@@ -258,8 +272,8 @@ function HowItWorks() {
   );
 }
 
-function ScreenerPreview({ tape }: { tape: Tick[] }) {
-  const rows = tape.filter(t => t.pe).slice(0, 7);
+function ScreenerPreview({ tape, onSelectSymbol }: { tape: Tick[]; onSelectSymbol: (sym: string) => void }) {
+  const rows = tape.slice(0, 7); // Show the first 7 active stocks
   return (
     <section className="screener-section">
       <div className="screener-container">
@@ -288,10 +302,12 @@ function ScreenerPreview({ tape }: { tape: Tick[] }) {
               <div
                 key={t.sym}
                 className={`screener-table-row ${i === rows.length - 1 ? "last" : ""}`}
+                style={{ cursor: "pointer" }}
+                onClick={() => onSelectSymbol(t.sym)}
               >
                 <span className="screener-cell symbol">{t.sym}</span>
                 <span className="screener-cell company">
-                  {({ AAPL:"Apple Inc.",NVDA:"NVIDIA Corp.",MSFT:"Microsoft Corp.",TSLA:"Tesla Inc.",AMZN:"Amazon.com Inc.",GOOGL:"Alphabet Inc.",META:"Meta Platforms",JPM:"JPMorgan Chase" } as Record<string,string>)[t.sym] ?? t.sym}
+                  {t.companyName ?? t.sym}
                 </span>
                 <span className={`screener-cell price ${t.blinkClass || ""}`}>{t.price}</span>
                 <span className={`screener-cell change ${t.up ? "up" : "down"} ${t.blinkClass || ""}`}>{t.pct}</span>
@@ -345,13 +361,14 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
 
     async function fetchLiveMarketData() {
       try {
-        const quotesRes = await fetch("/api/stocks/quotes");
+        const quotesRes = await fetch("/api/stocks/quotes?symbols=AAPL,NVDA,MSFT,TSLA,AMZN,GOOGL,META,JPM,V,NFLX");
 
         if (!active) return;
 
@@ -428,11 +445,16 @@ export default function LandingPage() {
         isLoading={isLoading} 
         isError={isError} 
         errorMessage={errorMessage} 
+        onSelectSymbol={setSelectedSymbol}
       />
       <HowItWorks />
-      <ScreenerPreview tape={tape} />
+      <ScreenerPreview tape={tape} onSelectSymbol={setSelectedSymbol} />
       <CTA />
       <Footer />
+
+      {selectedSymbol && (
+        <DetailModal symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />
+      )}
     </>
   );
 }
