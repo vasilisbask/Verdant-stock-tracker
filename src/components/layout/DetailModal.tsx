@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSession } from "next-auth/react";
 import { getCachedDetails, setCachedDetails, StockDetailsResponse } from "@/lib/cache";
 
 interface DetailModalProps {
@@ -23,6 +24,35 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
   } | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+
+  const { data: session, status } = useSession();
+  const [activeTab, setActiveTab] = useState<"overview" | "news" | "transactions">("overview");
+  const [userTransactions, setUserTransactions] = useState<any[]>([]);
+  const [loadingTransactions, setLoadingTransactions] = useState(false);
+
+  useEffect(() => {
+    if (status !== "authenticated" || activeTab !== "transactions") return;
+
+    let active = true;
+    async function fetchUserTransactions() {
+      try {
+        setLoadingTransactions(true);
+        const res = await fetch("/api/portfolio");
+        if (res.ok && active) {
+          const json = await res.json();
+          const filtered = (json.data || []).filter((tx: any) => tx.sym.toUpperCase() === symbol.toUpperCase());
+          setUserTransactions(filtered);
+        }
+      } catch (err) {
+        console.error("Failed to load user transactions in modal:", err);
+      } finally {
+        if (active) setLoadingTransactions(false);
+      }
+    }
+
+    fetchUserTransactions();
+    return () => { active = false; };
+  }, [status, activeTab, symbol]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -156,9 +186,8 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div 
-        className="modal-container scrollbar-hidden" 
+        className="modal-container" 
         onClick={e => e.stopPropagation()}
-        style={{ animation: "modalFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards" }}
       >
         {/* Backdrop Glow */}
         <div className={`modal-glow ${priceColorClass}`} />
@@ -173,24 +202,30 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
         {loading ? (
           /* Premium Loading Skeleton */
           <div className="modal-skeleton-body">
-            <div className="skeleton-cell pulse" style={{ width: "35%", height: 32, borderRadius: 4 }} />
-            <div className="skeleton-cell pulse" style={{ width: "20%", height: 18, borderRadius: 4, marginTop: 12 }} />
+            <div className="skeleton-cell pulse" style={{ width: "35%", height: 32, borderRadius: "4px" }} />
+            <div className="skeleton-cell pulse" style={{ width: "20%", height: 18, borderRadius: "4px", marginTop: 12 }} />
             
-            <div className="skeleton-cell pulse" style={{ width: "100%", height: 180, borderRadius: 8, marginTop: 32 }} />
+            <div className="skeleton-cell pulse" style={{ width: "100%", height: 180, borderRadius: "8px", marginTop: 32 }} />
             
             <div className="modal-skeleton-stats">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="skeleton-cell pulse" style={{ height: 48, borderRadius: 4 }} />
+                <div key={i} className="skeleton-cell pulse" style={{ height: 48, borderRadius: "4px" }} />
               ))}
             </div>
           </div>
         ) : error ? (
           /* Error State */
           <div className="modal-error-container">
-            <div className="modal-error-icon">⚠️</div>
+            <div className="modal-error-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="modal-error-icon-svg">
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            </div>
             <h3 className="modal-error-title">Failed to load details</h3>
             <p className="modal-error-desc">{error}</p>
-            <button className="btn-primary btn-sm" onClick={onClose} style={{ marginTop: 20 }}>
+            <button className="btn-primary btn-sm" onClick={onClose}>
               Go Back
             </button>
           </div>
@@ -200,7 +235,7 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
             {/* Header section */}
             <header className="modal-header-block">
               <div>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <div className="modal-title-row">
                   <h2 className="modal-symbol-title">{data.symbol}</h2>
                   <span className="modal-sector-badge">{data.summary.sector}</span>
                 </div>
@@ -243,144 +278,274 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
               </div>
             </header>
 
-            {/* SVG Historical Price Line Chart */}
-            <section className="modal-chart-section">
-              <div className="modal-chart-header">
-                <span className="modal-chart-label">30-Day Historical Trend</span>
-                {hoveredPoint ? (
-                  <div className="modal-chart-tooltip">
-                    <span className="tooltip-date">{hoveredPoint.date}:</span>
-                    <span className="tooltip-price">${hoveredPoint.price.toFixed(2)}</span>
+            <nav className="modal-tabs-nav">
+              {[
+                { id: "overview", label: "Overview" },
+                { id: "news", label: `News Headlines (${data.news?.length || 0})` },
+                { id: "transactions", label: "My Transactions" }
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`modal-tab-btn ${activeTab === tab.id ? "active" : ""}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+
+            {activeTab === "overview" && (
+              <>
+                <section className="modal-chart-section">
+                  <div className="modal-chart-header">
+                    <span className="modal-chart-label">30-Day Historical Trend</span>
+                    {hoveredPoint ? (
+                      <div className="modal-chart-tooltip">
+                        <span className="tooltip-date">{hoveredPoint.date}:</span>
+                        <span className="tooltip-price">${hoveredPoint.price.toFixed(2)}</span>
+                      </div>
+                    ) : (
+                      <span className="modal-chart-instructions">Hover chart to explore pricing</span>
+                    )}
+                  </div>
+
+                  {history.length > 1 ? (
+                    <svg
+                      ref={svgRef}
+                      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                      width="100%"
+                      height="100%"
+                      className="modal-svg-canvas"
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={handleMouseLeave}
+                    >
+                      <defs>
+                        <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
+                          <stop offset="100%" stopColor={strokeColor} stopOpacity="0.00" />
+                        </linearGradient>
+                      </defs>
+
+                      {Array.from({ length: 4 }).map((_, i) => {
+                        const y = paddingY + (i / 3) * chartHeight;
+                        const val = maxPrice - (i / 3) * priceRange;
+                        return (
+                          <g key={i}>
+                            <line 
+                              x1={paddingX} 
+                              y1={y} 
+                              x2={svgWidth - paddingX} 
+                              y2={y} 
+                              className="modal-chart-grid-line"
+                            />
+                            <text
+                              x={paddingX - 8}
+                              y={y + 4}
+                              className="modal-chart-axis-text"
+                              textAnchor="end"
+                            >
+                              ${val.toFixed(0)}
+                            </text>
+                          </g>
+                        );
+                      })}
+
+                      <path d={areaPathD} fill="url(#areaGradient)" />
+                      <path d={linePathD} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />
+
+                      {/* Active hover crosshair and tracking dot */}
+                      {hoveredPoint && (
+                        <>
+                          <line
+                            x1={hoveredPoint.x}
+                            y1={paddingY}
+                            x2={hoveredPoint.x}
+                            y2={svgHeight - paddingY}
+                            className="modal-chart-crosshair"
+                          />
+                          <circle
+                            cx={hoveredPoint.x}
+                            cy={hoveredPoint.y}
+                            r="5.5"
+                            fill={strokeColor}
+                            stroke="var(--bg-core)"
+                            strokeWidth="2.5"
+                            className="modal-chart-interactive-dot"
+                          />
+                        </>
+                      )}
+
+                      {/* Min and Max X labels */}
+                      <text
+                        x={paddingX}
+                        y={svgHeight - 8}
+                        className="modal-chart-axis-text"
+                      >
+                        {history[0].date}
+                      </text>
+                      <text
+                        x={svgWidth - paddingX}
+                        y={svgHeight - 8}
+                        className="modal-chart-axis-text"
+                        textAnchor="end"
+                      >
+                        {history[history.length - 1].date}
+                      </text>
+                    </svg>
+                  ) : (
+                    <div className="modal-no-chart">Historical charts not available for this symbol.</div>
+                  )}
+                </section>
+
+                {/* Corporate Profile description */}
+                <section className="modal-desc-section">
+                  <h4 className="modal-section-subtitle">Company Overview</h4>
+                  <p className="modal-desc-text">
+                    {data.summary.description}
+                  </p>
+                </section>
+
+                {/* Detailed Stats Grid */}
+                <section className="modal-stats-section">
+                  <h4 className="modal-section-subtitle">Key Statistics</h4>
+                  <div className="modal-stats-grid">
+                    {[
+                      { label: "Market Cap", value: data.stats.marketCap },
+                      { label: "P/E Ratio (Trailing)", value: data.stats.trailingPE },
+                      { label: "Dividend Yield", value: data.stats.dividendYield },
+                      { label: "Volume (Average)", value: data.stats.volume },
+                      { label: "Today's Range", value: `${data.stats.dayLow} – ${data.stats.dayHigh}` },
+                      { label: "52-Week Range", value: `${data.stats.fiftyTwoWeekLow} – ${data.stats.fiftyTwoWeekHigh}` }
+                    ].map(item => (
+                      <div key={item.label} className="modal-stat-card">
+                        <span className="modal-stat-label">{item.label}</span>
+                        <span className="modal-stat-value">{item.value || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              </>
+            )}
+
+            {activeTab === "news" && (
+              <section className="modal-news-section">
+                <h4 className="modal-section-subtitle modal-news-title">Latest Headlines</h4>
+                {(!data.news || data.news.length === 0) ? (
+                  <div className="modal-empty-state">
+                    <span>No news headlines found for this stock.</span>
                   </div>
                 ) : (
-                  <span className="modal-chart-instructions">Hover chart to explore pricing</span>
-                )}
-              </div>
-
-              {history.length > 1 ? (
-                <svg
-                  ref={svgRef}
-                  viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-                  width="100%"
-                  height="100%"
-                  className="modal-svg-canvas"
-                  onMouseMove={handleMouseMove}
-                  onMouseLeave={handleMouseLeave}
-                >
-                  <defs>
-                    <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
-                      <stop offset="100%" stopColor={strokeColor} stopOpacity="0.00" />
-                    </linearGradient>
-                  </defs>
-
-                  {/* Horizontal Grid lines */}
-                  {Array.from({ length: 4 }).map((_, i) => {
-                    const y = paddingY + (i / 3) * chartHeight;
-                    const val = maxPrice - (i / 3) * priceRange;
-                    return (
-                      <g key={i}>
-                        <line 
-                          x1={paddingX} 
-                          y1={y} 
-                          x2={svgWidth - paddingX} 
-                          y2={y} 
-                          stroke="rgba(255, 255, 255, 0.05)" 
-                          strokeWidth="1" 
-                          strokeDasharray="2 2"
-                        />
-                        <text
-                          x={paddingX - 8}
-                          y={y + 4}
-                          fill="rgba(255, 255, 255, 0.3)"
-                          fontSize="9"
-                          textAnchor="end"
-                        >
-                          ${val.toFixed(0)}
-                        </text>
-                      </g>
-                    );
-                  })}
-
-                  {/* SVG paths */}
-                  <path d={areaPathD} fill="url(#areaGradient)" />
-                  <path d={linePathD} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />
-
-                  {/* Active hover crosshair and tracking dot */}
-                  {hoveredPoint && (
-                    <>
-                      <line
-                        x1={hoveredPoint.x}
-                        y1={paddingY}
-                        x2={hoveredPoint.x}
-                        y2={svgHeight - paddingY}
-                        stroke="rgba(255, 255, 255, 0.15)"
-                        strokeWidth="1"
-                        strokeDasharray="2 2"
-                      />
-                      <circle
-                        cx={hoveredPoint.x}
-                        cy={hoveredPoint.y}
-                        r="5.5"
-                        fill={strokeColor}
-                        stroke="var(--bg-core)"
-                        strokeWidth="2.5"
-                        style={{ filter: "drop-shadow(0 0 4px rgba(255,255,255,0.3))" }}
-                      />
-                    </>
-                  )}
-
-                  {/* Min and Max X labels */}
-                  <text
-                    x={paddingX}
-                    y={svgHeight - 8}
-                    fill="rgba(255, 255, 255, 0.25)"
-                    fontSize="9"
-                  >
-                    {history[0].date}
-                  </text>
-                  <text
-                    x={svgWidth - paddingX}
-                    y={svgHeight - 8}
-                    fill="rgba(255, 255, 255, 0.25)"
-                    fontSize="9"
-                    textAnchor="end"
-                  >
-                    {history[history.length - 1].date}
-                  </text>
-                </svg>
-              ) : (
-                <div className="modal-no-chart">Historical charts not available for this symbol.</div>
-              )}
-            </section>
-
-            {/* Corporate Profile description */}
-            <section className="modal-desc-section">
-              <h4 className="modal-section-subtitle">Company Overview</h4>
-              <p className="modal-desc-text scrollbar-hidden">
-                {data.summary.description}
-              </p>
-            </section>
-
-            {/* Detailed Stats Grid */}
-            <section className="modal-stats-section">
-              <h4 className="modal-section-subtitle">Key Statistics</h4>
-              <div className="modal-stats-grid">
-                {[
-                  { label: "Market Cap", value: data.stats.marketCap },
-                  { label: "P/E Ratio (Trailing)", value: data.stats.trailingPE },
-                  { label: "Dividend Yield", value: data.stats.dividendYield },
-                  { label: "Volume (Average)", value: data.stats.volume },
-                  { label: "Today's Range", value: `${data.stats.dayLow} – ${data.stats.dayHigh}` },
-                  { label: "52-Week Range", value: `${data.stats.fiftyTwoWeekLow} – ${data.stats.fiftyTwoWeekHigh}` }
-                ].map(item => (
-                  <div key={item.label} className="modal-stat-card">
-                    <span className="modal-stat-label">{item.label}</span>
-                    <span className="modal-stat-value">{item.value || "—"}</span>
+                  <div className="modal-news-list">
+                    {data.news.map((item: any) => (
+                      <a
+                        key={item.uuid}
+                        href={item.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="modal-news-card"
+                      >
+                        {item.thumbnail && (
+                          <img
+                            src={item.thumbnail}
+                            alt=""
+                            className="modal-news-thumbnail"
+                          />
+                        )}
+                        <div className="modal-news-content">
+                          <div>
+                            <h5 className="modal-news-card-title">
+                              {item.title}
+                            </h5>
+                          </div>
+                          <div className="modal-news-meta">
+                            <span className="modal-news-publisher">{item.publisher}</span>
+                            <span>·</span>
+                            <span>{new Date(item.time).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                        </div>
+                      </a>
+                    ))}
                   </div>
-                ))}
-              </div>
-            </section>
+                )}
+              </section>
+            )}
+
+            {activeTab === "transactions" && (
+              <section className="modal-tx-section">
+                <h4 className="modal-section-subtitle modal-news-title">My Transaction Log</h4>
+                {status !== "authenticated" ? (
+                  <div className="modal-restricted-card">
+                    <span className="modal-icon-wrapper">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="modal-restricted-lock-icon">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                        <path d="M7 11V7a5 5 0 0110 0v4"/>
+                      </svg>
+                    </span>
+                    <h5 className="modal-restricted-title">Access Restricted</h5>
+                    <p className="modal-restricted-desc">
+                      Sign in to view your transaction log, cost basis, and portfolio holdings for {symbol}.
+                    </p>
+                    <a
+                      href="/login"
+                      className="btn-primary btn-sm"
+                    >
+                      Sign In
+                    </a>
+                  </div>
+                ) : loadingTransactions ? (
+                  <div className="modal-empty-state">
+                    <span className="skeleton-cell pulse" style={{ width: "80px", height: "16px", borderRadius: "2px" }} />
+                    <span className="skeleton-cell pulse" style={{ width: "120px", height: "12px", borderRadius: "2px", marginTop: "8px" }} />
+                  </div>
+                ) : userTransactions.length === 0 ? (
+                  <div className="modal-restricted-card">
+                    <span className="modal-icon-wrapper">
+                      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="modal-restricted-empty-icon">
+                        <path d="M12 20V10M18 20V4M6 20v-6"/>
+                      </svg>
+                    </span>
+                    <h5 className="modal-restricted-title">No Transactions Yet</h5>
+                    <p className="modal-restricted-desc modal-restricted-desc-w320">
+                      You don't own any shares of {symbol} yet. You can log purchase transactions on the Portfolio page.
+                    </p>
+                    <a
+                      href="/portfolio"
+                      className="btn-secondary btn-sm"
+                    >
+                      Go to Portfolio
+                    </a>
+                  </div>
+                ) : (
+                  <div className="modal-tx-table-container">
+                    <table className="modal-tx-table">
+                      <thead>
+                        <tr className="modal-tx-tr">
+                          <th className="modal-tx-th">DATE</th>
+                          <th className="modal-tx-th right">QUANTITY</th>
+                          <th className="modal-tx-th right">PURCHASE PRICE</th>
+                          <th className="modal-tx-th right">TOTAL COST</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {userTransactions.map((tx) => {
+                          const qty = parseFloat(tx.quantity) || 0;
+                          const prc = parseFloat(tx.price) || 0;
+                          const total = qty * prc;
+                          return (
+                            <tr key={tx.id} className="modal-tx-tr">
+                              <td className="modal-tx-td highlight">{new Date(tx.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                              <td className="modal-tx-td highlight-bold right">{qty}</td>
+                              <td className="modal-tx-td right">${prc.toFixed(2)}</td>
+                              <td className="modal-tx-td mint-bold right">${total.toFixed(2)}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
           </div>
         ) : null}
       </div>

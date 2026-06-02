@@ -23,6 +23,14 @@ export interface StockDetailsResponse {
     date: string;
     close: number;
   }>;
+  news?: Array<{
+    uuid: string;
+    title: string;
+    publisher: string;
+    link: string;
+    time: string;
+    thumbnail: string | null;
+  }>;
 }
 
 interface CacheEntry {

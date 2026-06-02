@@ -94,12 +94,33 @@ export async function GET(req: NextRequest) {
       }))
       .slice(-30);
 
+    // Fetch real-time news stories
+    let news: any[] = [];
+    try {
+      const searchRes = (await yahooFinance.search(symbol, {}, { validateResult: false })) as any;
+      if (searchRes && Array.isArray(searchRes.news)) {
+        news = searchRes.news
+          .map((item: any) => ({
+            uuid: item.uuid,
+            title: item.title,
+            publisher: item.publisher,
+            link: item.link,
+            time: item.providerPublishTime,
+            thumbnail: item.thumbnail?.resolutions?.[1]?.url || item.thumbnail?.resolutions?.[0]?.url || null
+          }))
+          .slice(0, 5);
+      }
+    } catch (newsErr) {
+      console.warn(`[Yahoo Finance Details API] Failed to fetch news for ${symbol}:`, (newsErr as Error).message);
+    }
+
     return NextResponse.json({
       success: true,
       symbol,
       summary,
       stats,
-      history
+      history,
+      news
     });
 
   } catch (err) {
