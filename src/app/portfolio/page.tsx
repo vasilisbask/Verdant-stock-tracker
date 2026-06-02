@@ -7,6 +7,7 @@ import Link from "next/link";
 import DetailModal from "@/components/layout/DetailModal";
 import Footer from "@/components/layout/Footer";
 import PillHeader from "@/components/layout/PillHeader";
+import StockLogo from "@/components/layout/StockLogo";
 
 interface Quote {
   sym: string;
@@ -60,7 +61,9 @@ const sharesFormatter = new Intl.NumberFormat("en-US", {
 
 function parseQuotePrice(value?: string): number | null {
   if (!value) return null;
-  const parsed = Number(value.replace(/[^0-9.-]/g, ""));
+  const cleaned = value.replace(/[^0-9.-]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
 }
 
@@ -130,7 +133,7 @@ function QuickLink({
   );
 }
 
-export default function DashboardPage() {
+export default function PortfolioPage() {
   const { data: session, status } = useSession();
 
   const [transactions, setTransactions] = useState<PortfolioTransaction[]>([]);
@@ -392,15 +395,16 @@ export default function DashboardPage() {
       });
 
       if (!res.ok) {
-        throw new Error("Could not add purchase");
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || "Could not add purchase");
       }
 
       setSymbol("");
       setQuantity("");
       setPrice("");
       await loadPortfolio();
-    } catch {
-      setFormError("Could not save this purchase. Try again.");
+    } catch (err: any) {
+      setFormError(err.message || "Could not save this purchase. Try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -592,72 +596,148 @@ export default function DashboardPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="pf-holdings-table">
-                    <div className="pf-holdings-header">
-                      <span>Stock</span>
-                      <span className="right">Qty</span>
-                      <span className="right">Avg Cost</span>
-                      <span className="right">Current</span>
-                      <span className="right">Invested</span>
-                      <span className="right">Value</span>
-                      <span className="right">P/L</span>
-                      <span className="right">Actions</span>
+                  <>
+                    {/* Desktop Holdings Table */}
+                    <div className="pf-holdings-table">
+                      <div className="pf-holdings-header">
+                        <span>Stock</span>
+                        <span className="right">Qty</span>
+                        <span className="right">Avg Cost</span>
+                        <span className="right">Current</span>
+                        <span className="right">Invested</span>
+                        <span className="right">Value</span>
+                        <span className="right">P/L</span>
+                        <span className="right">Actions</span>
+                      </div>
+
+                      {holdings.map((holding, index) => (
+                        <div
+                          key={holding.sym}
+                          className="pf-holdings-row"
+                          style={{ animationDelay: `${index * 0.03}s` }}
+                        >
+                          <button
+                            className="pf-stock-cell"
+                            onClick={() => setSelectedSymbol(holding.sym)}
+                          >
+                            <StockLogo symbol={holding.sym} companyName={holding.companyName} size={24} />
+                            <div className="pf-stock-cell-meta">
+                              <span className="pf-stock-symbol">
+                                {holding.sym}
+                              </span>
+                              <span className="pf-stock-name">
+                                {holding.companyName}
+                              </span>
+                            </div>
+                          </button>
+                          <span className="right">
+                            {sharesFormatter.format(holding.quantity)}
+                          </span>
+                          <span className="right">
+                            {currency.format(holding.avgPrice)}
+                          </span>
+                          <span className="right">
+                            {holding.hasLivePrice
+                              ? currency.format(holding.currentPrice)
+                              : "Pending"}
+                          </span>
+                          <span className="right">
+                            {currency.format(holding.invested)}
+                          </span>
+                          <span className="right">
+                            {currency.format(holding.currentValue)}
+                          </span>
+                          <span
+                            className={`right pf-pl ${
+                              holding.gainLoss >= 0 ? "up" : "down"
+                            }`}
+                          >
+                            {currency.format(holding.gainLoss)}
+                            <small>{formatPercent(holding.gainLossPct)}</small>
+                          </span>
+                          <span className="right">
+                            <button
+                              className="pf-remove-btn"
+                              onClick={() => removeHolding(holding.sym)}
+                              aria-label={`Remove ${holding.sym}`}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </span>
+                        </div>
+                      ))}
                     </div>
 
-                    {holdings.map((holding, index) => (
-                      <div
-                        key={holding.sym}
-                        className="pf-holdings-row"
-                        style={{ animationDelay: `${index * 0.04}s` }}
-                      >
-                        <button
-                          className="pf-stock-cell"
+                    {/* Mobile/Tablet Holdings Card Grid */}
+                    <div className="pf-holdings-mobile-grid">
+                      {holdings.map((holding, index) => (
+                        <div
+                          key={holding.sym}
+                          className="pf-mobile-card"
                           onClick={() => setSelectedSymbol(holding.sym)}
+                          style={{ animationDelay: `${index * 0.03}s` }}
                         >
-                          <span className="pf-stock-symbol">
-                            {holding.sym}
-                          </span>
-                          <span className="pf-stock-name">
-                            {holding.companyName}
-                          </span>
-                        </button>
-                        <span className="right">
-                          {sharesFormatter.format(holding.quantity)}
-                        </span>
-                        <span className="right">
-                          {currency.format(holding.avgPrice)}
-                        </span>
-                        <span className="right">
-                          {holding.hasLivePrice
-                            ? currency.format(holding.currentPrice)
-                            : "Pending"}
-                        </span>
-                        <span className="right">
-                          {currency.format(holding.invested)}
-                        </span>
-                        <span className="right">
-                          {currency.format(holding.currentValue)}
-                        </span>
-                        <span
-                          className={`right pf-pl ${
-                            holding.gainLoss >= 0 ? "up" : "down"
-                          }`}
-                        >
-                          {currency.format(holding.gainLoss)}
-                          <small>{formatPercent(holding.gainLossPct)}</small>
-                        </span>
-                        <span className="right">
-                          <button
-                            className="pf-remove-btn"
-                            onClick={() => removeHolding(holding.sym)}
-                            aria-label={`Remove ${holding.sym}`}
-                          >
-                            Remove
-                          </button>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                          <div className="pf-mobile-card-header">
+                            <div className="pf-mobile-card-stock">
+                              <StockLogo symbol={holding.sym} companyName={holding.companyName} size={32} />
+                              <div className="pf-mobile-card-stock-meta">
+                                <span className="pf-mobile-card-symbol">{holding.sym}</span>
+                                <span className="pf-mobile-card-name">{holding.companyName}</span>
+                              </div>
+                            </div>
+                            <button
+                              className="pf-mobile-card-remove"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeHolding(holding.sym);
+                              }}
+                              aria-label={`Remove ${holding.sym}`}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </button>
+                          </div>
+
+                          <div className="pf-mobile-card-divider" />
+
+                          <div className="pf-mobile-card-grid">
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">Qty</span>
+                              <span className="pf-mobile-card-value">{sharesFormatter.format(holding.quantity)}</span>
+                            </div>
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">Avg Cost</span>
+                              <span className="pf-mobile-card-value">{currency.format(holding.avgPrice)}</span>
+                            </div>
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">Current</span>
+                              <span className="pf-mobile-card-value">
+                                {holding.hasLivePrice ? currency.format(holding.currentPrice) : "Pending"}
+                              </span>
+                            </div>
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">Invested</span>
+                              <span className="pf-mobile-card-value">{currency.format(holding.invested)}</span>
+                            </div>
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">Value</span>
+                              <span className="pf-mobile-card-value">{currency.format(holding.currentValue)}</span>
+                            </div>
+                            <div className="pf-mobile-card-stat">
+                              <span className="pf-mobile-card-label">P/L</span>
+                              <span className={`pf-mobile-card-value pf-pl ${holding.gainLoss >= 0 ? "up" : "down"}`}>
+                                {currency.format(holding.gainLoss)}
+                                <small className="pf-mobile-card-pct">{formatPercent(holding.gainLossPct)}</small>
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </section>
 

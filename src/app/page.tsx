@@ -5,6 +5,7 @@ import { useSession } from "next-auth/react";
 import PillHeader from "../components/layout/PillHeader";
 import Footer from "../components/layout/Footer";
 import DetailModal from "../components/layout/DetailModal";
+import StockLogo from "../components/layout/StockLogo";
 
 /* Types */
 interface Tick { 
@@ -169,7 +170,10 @@ function Hero({
               style={{ animationDelay: `${i * 0.04}s`, cursor: "pointer" }}
               onClick={() => onSelectSymbol(t.sym)}
             >
-              <span className="quotes-cell symbol">{t.sym}</span>
+              <span className="quotes-cell symbol" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <StockLogo symbol={t.sym} companyName={t.companyName} size={18} />
+                <span>{t.sym}</span>
+              </span>
               <span className={`quotes-cell price ${t.blinkClass || ""}`}>{t.price}</span>
               <span className={`quotes-cell change ${t.blinkClass || ""} ${t.up ? "up" : "down"}`}>{t.chg}</span>
               <span className={`quotes-cell pct ${t.blinkClass || ""} ${t.up ? "up" : "down"}`}>{t.pct}</span>
@@ -305,7 +309,10 @@ function ScreenerPreview({ tape, onSelectSymbol }: { tape: Tick[]; onSelectSymbo
                 style={{ cursor: "pointer" }}
                 onClick={() => onSelectSymbol(t.sym)}
               >
-                <span className="screener-cell symbol">{t.sym}</span>
+                <span className="screener-cell symbol" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <StockLogo symbol={t.sym} companyName={t.companyName} size={18} />
+                  <span>{t.sym}</span>
+                </span>
                 <span className="screener-cell company">
                   {t.companyName ?? t.sym}
                 </span>

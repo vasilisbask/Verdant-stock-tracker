@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { z } from "zod";
+import YahooFinance from "yahoo-finance2";
+
+const yahooFinance = new YahooFinance({
+  validation: { logErrors: false },
+  suppressNotices: ["yahooSurvey"]
+});
 
 import { TransactionType } from "@/generated/prisma/client";
 import { authOptions } from "@/lib/auth";
@@ -103,7 +109,28 @@ export async function POST(req: NextRequest) {
     }
 
     const symbol = parsed.data.symbol.toUpperCase();
-    const companyName = parsed.data.companyName?.trim() || symbol;
+    let companyName = parsed.data.companyName?.trim() || symbol;
+
+    // Validate that the stock symbol exists in Yahoo Finance
+    try {
+      const quote = await yahooFinance.quote(symbol, {}, { validateResult: false });
+      if (!quote || !quote.regularMarketPrice) {
+        return NextResponse.json(
+          { error: `Ticker symbol '${symbol}' does not exist or is delisted.` },
+          { status: 400 }
+        );
+      }
+      if (!parsed.data.companyName) {
+        companyName = quote.longName || quote.shortName || quote.displayName || companyName;
+      }
+    } catch (err) {
+      console.warn(`[PORTFOLIO_POST] Failed to validate symbol ${symbol}:`, (err as Error).message);
+      return NextResponse.json(
+        { error: `Ticker symbol '${symbol}' does not exist or is delisted.` },
+        { status: 400 }
+      );
+    }
+
     const quantity = parsed.data.quantity.toString();
     const price = parsed.data.price.toString();
 

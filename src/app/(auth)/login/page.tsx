@@ -33,7 +33,7 @@ export default function LoginPage() {
         return;
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = "/portfolio";
     } catch {
       setError("Something went wrong. Please try again.");
     } finally {

@@ -5,6 +5,7 @@ import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
 import { SECTORS, getCompanyMeta } from "@/lib/stocks";
 import DetailModal from "@/components/layout/DetailModal";
+import StockLogo from "@/components/layout/StockLogo";
 
 /* Types */
 interface Tick {
@@ -309,7 +310,12 @@ export default function ScreenerPage() {
                       style={{ animationDelay: `${i * 0.03}s`, cursor: "pointer" }}
                       onClick={() => setSelectedSymbol(t.sym)}
                     >
-                      <td className="sc-td sc-sym">{t.sym}</td>
+                      <td className="sc-td sc-sym">
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <StockLogo symbol={t.sym} companyName={t.name} size={20} />
+                          <span>{t.sym}</span>
+                        </div>
+                      </td>
                       <td className="sc-td sc-name">{t.name}</td>
                       <td className="sc-td sc-sector">
                         <span className="sc-sector-badge">{t.sector}</span>

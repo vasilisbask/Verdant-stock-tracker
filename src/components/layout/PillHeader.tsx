@@ -17,7 +17,7 @@ export default function PillHeader() {
 
   const links = session
     ? [
-        { label: "Portfolio", href: "/dashboard" },
+        { label: "Portfolio", href: "/portfolio" },
         { label: "Screener", href: "/screener" },
         { label: "Watchlist", href: "/watchlist" },
         { label: "Markets", href: "/markets" },

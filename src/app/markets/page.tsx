@@ -27,28 +27,29 @@ const EXCHANGES = [
 ];
 
 /* Market session helpers */
+function getETDate(): Date {
+  const tzString = new Date().toLocaleString("en-US", { timeZone: "America/New_York" });
+  return new Date(tzString);
+}
+
 function getETHour(): number {
-  const now = new Date();
-  // Approximate ET offset (UTC-4 EDT, UTC-5 EST)
-  const etOffset = -4; // EDT (summer)
-  const utc = now.getTime() + now.getTimezoneOffset() * 60000;
-  const et = new Date(utc + 3600000 * etOffset);
+  const et = getETDate();
   return et.getHours() + et.getMinutes() / 60;
 }
 
 function isMarketOpen(): boolean {
-  const now = new Date();
-  const day = now.getDay(); // 0=Sun, 6=Sat
+  const et = getETDate();
+  const day = et.getDay(); // 0=Sun, 6=Sat (New York day!)
   if (day === 0 || day === 6) return false;
-  const h = getETHour();
+  const h = et.getHours() + et.getMinutes() / 60;
   return h >= 9.5 && h < 16;
 }
 
 function getSessionLabel(): string {
-  const now = new Date();
-  const day = now.getDay();
+  const et = getETDate();
+  const day = et.getDay();
   if (day === 0 || day === 6) return "Weekend — Market Closed";
-  const h = getETHour();
+  const h = et.getHours() + et.getMinutes() / 60;
   if (h < 4) return "Closed — Pre-market starts 04:00 ET";
   if (h < 9.5) return "Pre-market Trading";
   if (h < 16) return "Regular Session Open";
@@ -134,9 +135,25 @@ export default function MarketsPage() {
     })).sort((a, b) => b.avg - a.avg);
   }, [quotes]);
 
-  /* Time display */
-  const timeStr = now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  const dateStr = now.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  /* Time display (New York / ET) */
+  const timeStr = now.toLocaleTimeString("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const dateStr = now.toLocaleDateString("en-US", {
+    timeZone: "America/New_York",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+  });
+  const localTimeStr = now.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
   const open = isMarketOpen();
   const sessionLabel = getSessionLabel();
 
@@ -156,7 +173,10 @@ export default function MarketsPage() {
             {mounted ? (
               <>
                 <div className="mk-clock">{timeStr}</div>
-                <div className="mk-date">{dateStr}</div>
+                <div className="mk-date">{dateStr} <span className="mk-date-tz">(New York Time)</span></div>
+                <div className="mk-local-time">
+                  Your time: <span className="mk-local-time-val">{localTimeStr}</span>
+                </div>
                 <div className={`mk-session-badge ${open ? "open" : "closed"}`}>
                   <span className={`live-dot ${open ? "mk-dot--open" : "mk-dot--closed"}`} />
                   {sessionLabel}

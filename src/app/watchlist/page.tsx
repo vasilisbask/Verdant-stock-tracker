@@ -5,6 +5,7 @@ import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
 import { getCompanyMeta } from "@/lib/stocks";
 import DetailModal from "@/components/layout/DetailModal";
+import StockLogo from "@/components/layout/StockLogo";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface WatchItem {
@@ -107,9 +108,12 @@ function StockCard({
     <div className="wl-card">
       {/* Top row: symbol + remove */}
       <div className="wl-card-top" style={{ cursor: "pointer" }} onClick={() => onSelectSymbol(item.sym)}>
-        <div>
-          <div className="wl-sym">{item.sym}</div>
-          <div className="wl-name">{quote?.companyName ?? item.sym}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <StockLogo symbol={item.sym} companyName={quote?.companyName} size={30} />
+          <div>
+            <div className="wl-sym">{item.sym}</div>
+            <div className="wl-name">{quote?.companyName ?? item.sym}</div>
+          </div>
         </div>
         <button 
           className="wl-remove" 
@@ -197,6 +201,7 @@ export default function WatchlistPage() {
 
   const [addInput, setAddInput]   = useState("");
   const [addError, setAddError]   = useState("");
+  const [isAdding, setIsAdding]   = useState(false);
   const addRef                    = useRef<HTMLInputElement>(null);
 
   /* Load watchlist from localStorage on mount */
@@ -258,18 +263,42 @@ export default function WatchlistPage() {
   }, [watchlist.length]);
 
   /* Add ticker */
-  function addTicker(sym: string) {
+  async function addTicker(sym: string) {
     const s = sym.trim().toUpperCase().replace(/[^A-Z]/g, "");
     if (!s) return;
     if (watchlist.some(w => w.sym === s)) {
       setAddError(`${s} is already in your watchlist.`);
       return;
     }
-    const updated = [...watchlist, { sym: s }];
-    setWatchlist(updated);
-    saveWatchlist(updated);
-    setAddInput("");
+    
+    setIsAdding(true);
     setAddError("");
+    try {
+      const res = await fetch(`/api/stocks/quotes?symbols=${s}`);
+      if (!res.ok) {
+        throw new Error("Verification failed");
+      }
+      const json = await res.json();
+      const quote = json.data?.[0];
+      
+      if (!quote || quote.price === "—") {
+        setAddError(`Ticker symbol '${s}' does not exist or is delisted.`);
+        return;
+      }
+
+      // Pre-cache quote so that card displays instantly
+      setQuotes(prev => ({ ...prev, [s]: quote }));
+
+      const updated = [...watchlist, { sym: s }];
+      setWatchlist(updated);
+      saveWatchlist(updated);
+      setAddInput("");
+      setAddError("");
+    } catch {
+      setAddError(`Ticker symbol '${s}' does not exist or is delisted.`);
+    } finally {
+      setIsAdding(false);
+    }
   }
 
   /* Remove ticker */
@@ -317,14 +346,15 @@ export default function WatchlistPage() {
               ref={addRef}
               className={`wl-add-input ${addError ? "error" : ""}`}
               type="text"
-              placeholder="Enter a ticker — AAPL, NVDA, MSFT…"
+              placeholder={isAdding ? "Verifying ticker..." : "Enter a ticker — AAPL, NVDA, MSFT…"}
               value={addInput}
               onChange={e => { setAddInput(e.target.value.toUpperCase()); setAddError(""); }}
-              onKeyDown={e => { if (e.key === "Enter") addTicker(addInput); }}
+              onKeyDown={e => { if (e.key === "Enter" && !isAdding) addTicker(addInput); }}
               maxLength={6}
+              disabled={isAdding}
             />
-            <button className="wl-add-btn" onClick={() => addTicker(addInput)}>
-              Add +
+            <button className="wl-add-btn" onClick={() => addTicker(addInput)} disabled={isAdding}>
+              {isAdding ? "..." : "Add +"}
             </button>
           </div>
           {addError && <p className="wl-add-error">{addError}</p>}
