@@ -896,6 +896,7 @@ button { border: none; background: none; cursor: pointer; }
 
 .pf-trade-panel {
   margin-bottom: 20px;
+  overflow: visible !important;
 }
 
 .pf-panel-note {
@@ -937,7 +938,8 @@ button { border: none; background: none; cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 10px;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  grid-column: 1 / -1;
 }
 
 .pf-live-btn,

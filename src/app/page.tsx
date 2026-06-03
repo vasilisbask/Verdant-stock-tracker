@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import PillHeader from "../components/layout/PillHeader";
 import Footer from "../components/layout/Footer";
 import DetailModal from "../components/layout/DetailModal";
 import StockLogo from "../components/layout/StockLogo";
+import { useFinnhubWS } from "@/lib/useFinnhubWS";
 
 /* Types */
 interface Tick { 
@@ -370,12 +371,46 @@ export default function LandingPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
+  const { status } = useSession();
+
+  const activeSymbols = useMemo(() => tape.map(t => t.sym), [tape]);
+
+  useFinnhubWS(
+    activeSymbols,
+    useCallback(({ symbol, price }) => {
+      setTape(prevTape =>
+        prevTape.map(tick => {
+          if (tick.sym !== symbol) return tick;
+          
+          const oldPrice = parseFloat(tick.price);
+          const newPrice = price;
+          if (isNaN(oldPrice) || oldPrice === newPrice) return tick;
+
+          const blinkClass = newPrice > oldPrice ? "blink-g" : "blink-r";
+          
+          setTimeout(() => {
+            setTape(currentTape =>
+              currentTape.map(x => x.sym === symbol ? { ...x, blinkClass: "" } : x)
+            );
+          }, 1000);
+
+          return {
+            ...tick,
+            price: newPrice.toFixed(2),
+            blinkClass
+          };
+        })
+      );
+    }, [])
+  );
+
   useEffect(() => {
     let active = true;
 
     async function fetchLiveMarketData() {
       try {
-        const quotesRes = await fetch("/api/stocks/quotes?symbols=AAPL,NVDA,MSFT,TSLA,AMZN,GOOGL,META,JPM,V,NFLX");
+        const symbols = "AAPL,NVDA,MSFT,TSLA,AMZN,GOOGL,META,JPM,V,NFLX";
+        const quotesRes = await fetch(`/api/stocks/quotes?symbols=${symbols}`);
 
         if (!active) return;
 
@@ -440,7 +475,7 @@ export default function LandingPage() {
       active = false;
       clearInterval(interval);
     };
-  }, []);
+  }, [status]);
 
   return (
     <>

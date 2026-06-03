@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 
@@ -8,6 +8,8 @@ import DetailModal from "@/components/layout/DetailModal";
 import Footer from "@/components/layout/Footer";
 import PillHeader from "@/components/layout/PillHeader";
 import StockLogo from "@/components/layout/StockLogo";
+import { getCompanyMeta } from "@/lib/stocks";
+import { useFinnhubWS } from "@/lib/useFinnhubWS";
 
 interface Quote {
   sym: string;
@@ -25,6 +27,7 @@ interface PortfolioTransaction {
   companyName: string;
   quantity: string;
   price: string;
+  type: "BUY" | "SELL";
   transactionDate: string;
 }
 
@@ -38,6 +41,7 @@ interface Holding {
   currentValue: number;
   gainLoss: number;
   gainLossPct: number;
+  realizedGainLoss: number;
   lots: number;
   hasLivePrice: boolean;
 }
@@ -133,6 +137,71 @@ function QuickLink({
   );
 }
 
+interface CustomSelectProps {
+  label: string;
+  value: "BUY" | "SELL";
+  onChange: (val: "BUY" | "SELL") => void;
+  options: Array<{ value: "BUY" | "SELL"; label: string }>;
+}
+
+function CustomSelect({ label, value, onChange, options }: CustomSelectProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const activeOption = options.find((o) => o.value === value) || options[0];
+
+  return (
+    <div
+      className={`pf-field sc-filter-group ${isOpen ? "open" : ""}`}
+      ref={dropdownRef}
+      style={{ position: "relative" }}
+    >
+      <span className="pf-field-label">{label}</span>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`sc-select-btn ${isOpen ? "active" : ""}`}
+        style={{ height: "40px", width: "100%", minWidth: "unset" }}
+      >
+        <span className="sc-select-btn-content">
+          <span>{activeOption.label}</span>
+        </span>
+        <span className="sc-select-arrow">▼</span>
+      </button>
+
+      {isOpen && (
+        <div className="sc-select-dropdown scrollbar-hidden" style={{ minWidth: "100%", width: "100%", background: "#111f1c" }}>
+          {options.map((opt) => {
+            const isSelected = opt.value === value;
+            return (
+              <div
+                key={opt.value}
+                onClick={() => {
+                  onChange(opt.value);
+                  setIsOpen(false);
+                }}
+                className={`sc-select-option ${isSelected ? "selected" : ""}`}
+              >
+                <span>{opt.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PortfolioPage() {
   const { data: session, status } = useSession();
 
@@ -148,6 +217,7 @@ export default function PortfolioPage() {
   const [symbol, setSymbol] = useState("");
   const [quantity, setQuantity] = useState("");
   const [price, setPrice] = useState("");
+  const [type, setType] = useState<"BUY" | "SELL">("BUY");
 
   const loadPortfolio = useCallback(async () => {
     if (status !== "authenticated") return;
@@ -206,6 +276,35 @@ export default function PortfolioPage() {
       .join(",");
   }, [transactions]);
 
+  const symbolsArray = useMemo(() => {
+    return Array.from(new Set(transactions.map((tx) => tx.sym))).sort();
+  }, [transactions]);
+
+  useFinnhubWS(
+    symbolsArray,
+    useCallback(({ symbol, price }) => {
+      setQuotes(prev => {
+        const old = prev[symbol];
+        const oldPrice = old ? parseFloat(old.price) : NaN;
+        const newPrice = price;
+        if (!isNaN(oldPrice) && oldPrice === newPrice) return prev;
+
+        return {
+          ...prev,
+          [symbol]: {
+            sym: symbol,
+            price: newPrice.toFixed(2),
+            chg: old ? old.chg : "—",
+            pct: old ? old.pct : "—",
+            up: old ? old.up : true,
+            vol: old ? old.vol : "—",
+            companyName: old?.companyName,
+          }
+        };
+      });
+    }, [])
+  );
+
   useEffect(() => {
     let active = true;
 
@@ -256,11 +355,16 @@ export default function PortfolioPage() {
         companyName: string;
         quantity: number;
         invested: number;
+        realizedGainLoss: number;
         lots: number;
       }
     >();
 
-    transactions.forEach((tx) => {
+    const sortedTransactions = [...transactions].sort(
+      (a, b) => new Date(a.transactionDate).getTime() - new Date(b.transactionDate).getTime()
+    );
+
+    sortedTransactions.forEach((tx) => {
       const txQuantity = Number(tx.quantity);
       const txPrice = Number(tx.price);
       if (!Number.isFinite(txQuantity) || !Number.isFinite(txPrice)) return;
@@ -270,11 +374,20 @@ export default function PortfolioPage() {
         companyName: tx.companyName || tx.sym,
         quantity: 0,
         invested: 0,
+        realizedGainLoss: 0,
         lots: 0,
       };
 
-      existing.quantity += txQuantity;
-      existing.invested += txQuantity * txPrice;
+      if (tx.type === "SELL") {
+        const avgCost = existing.quantity > 0 ? existing.invested / existing.quantity : 0;
+        const saleRealized = txQuantity * (txPrice - avgCost);
+        existing.realizedGainLoss += saleRealized;
+        existing.quantity -= txQuantity;
+        existing.invested -= txQuantity * avgCost;
+      } else {
+        existing.quantity += txQuantity;
+        existing.invested += txQuantity * txPrice;
+      }
       existing.lots += 1;
       map.set(tx.sym, existing);
     });
@@ -303,15 +416,20 @@ export default function PortfolioPage() {
       .sort((a, b) => b.currentValue - a.currentValue);
   }, [transactions, quotes]);
 
+  const activeHoldings = useMemo(() => {
+    return holdings.filter(h => h.quantity > 0);
+  }, [holdings]);
+
   const totals = useMemo(() => {
-    const invested = holdings.reduce((sum, item) => sum + item.invested, 0);
-    const currentValue = holdings.reduce(
+    const invested = activeHoldings.reduce((sum, item) => sum + item.invested, 0);
+    const currentValue = activeHoldings.reduce(
       (sum, item) => sum + item.currentValue,
       0
     );
     const gainLoss = currentValue - invested;
     const gainLossPct = invested > 0 ? (gainLoss / invested) * 100 : 0;
-    const liveCount = holdings.filter((item) => item.hasLivePrice).length;
+    const liveCount = activeHoldings.filter((item) => item.hasLivePrice).length;
+    const realizedGainLoss = holdings.reduce((sum, item) => sum + item.realizedGainLoss, 0);
 
     return {
       invested,
@@ -319,10 +437,11 @@ export default function PortfolioPage() {
       gainLoss,
       gainLossPct,
       liveCount,
+      realizedGainLoss,
     };
-  }, [holdings]);
+  }, [holdings, activeHoldings]);
 
-  const bestHolding = holdings.reduce<Holding | null>((best, item) => {
+  const bestHolding = activeHoldings.reduce<Holding | null>((best, item) => {
     if (!best) return item;
     return item.gainLossPct > best.gainLossPct ? item : best;
   }, null);
@@ -330,7 +449,7 @@ export default function PortfolioPage() {
   const recentTransactions = transactions.slice(0, 5);
   const firstName = session?.user?.name?.split(" ")[0] ?? "Trader";
   const isAuthenticated = status === "authenticated";
-  const hasHoldings = holdings.length > 0;
+  const hasHoldings = activeHoldings.length > 0;
 
   async function fillCurrentPrice() {
     const cleanSymbol = symbol.trim().toUpperCase();
@@ -368,12 +487,12 @@ export default function PortfolioPage() {
     const numericPrice = Number(price);
 
     if (!cleanSymbol || !numericQuantity || !numericPrice) {
-      setFormError("Fill symbol, quantity, and buy price.");
+      setFormError(`Fill symbol, quantity, and ${type === "BUY" ? "buy" : "sell"} price.`);
       return;
     }
 
     if (numericQuantity <= 0 || numericPrice <= 0) {
-      setFormError("Quantity and buy price must be greater than zero.");
+      setFormError(`Quantity and ${type === "BUY" ? "buy" : "sell"} price must be greater than zero.`);
       return;
     }
 
@@ -391,20 +510,22 @@ export default function PortfolioPage() {
           quantity: numericQuantity,
           price: numericPrice,
           companyName: quotes[cleanSymbol]?.companyName,
+          type,
         }),
       });
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || "Could not add purchase");
+        throw new Error(errorData.error || `Could not add ${type.toLowerCase()}`);
       }
 
       setSymbol("");
       setQuantity("");
       setPrice("");
+      setType("BUY");
       await loadPortfolio();
     } catch (err: any) {
-      setFormError(err.message || "Could not save this purchase. Try again.");
+      setFormError(err.message || `Could not save this ${type.toLowerCase()}. Try again.`);
     } finally {
       setIsSubmitting(false);
     }
@@ -478,7 +599,7 @@ export default function PortfolioPage() {
               <StatCard
                 label="Current Value"
                 value={currency.format(totals.currentValue)}
-                sub={`${totals.liveCount}/${holdings.length} live priced`}
+                sub={`${totals.liveCount}/${activeHoldings.length} live priced`}
                 loading={isLoadingPortfolio || isLoadingQuotes}
                 statusClass="stat-live"
               />
@@ -491,25 +612,33 @@ export default function PortfolioPage() {
                 statusClass={totals.gainLoss >= 0 ? "stat-up" : "stat-down"}
               />
               <StatCard
-                label="Positions"
-                value={`${holdings.length}`}
-                sub={
-                  bestHolding
-                    ? `Best: ${bestHolding.sym} ${formatPercent(
-                        bestHolding.gainLossPct
-                      )}`
-                    : "No holdings yet"
-                }
+                label="Realized P/L"
+                value={currency.format(totals.realizedGainLoss)}
+                sub={`${activeHoldings.length} active position${activeHoldings.length !== 1 ? 's' : ''}`}
+                up={totals.realizedGainLoss >= 0}
                 loading={isLoadingPortfolio}
+                statusClass={totals.realizedGainLoss >= 0 ? "stat-up" : "stat-down"}
               />
             </div>
 
             <section className="db-section pf-trade-panel u2">
               <div className="db-section-header">
-                <h2 className="db-section-title">Add Purchase</h2>
-                <span className="pf-panel-note">Buy transactions only</span>
+                <h2 className="db-section-title">Add Transaction</h2>
+                <span className="pf-panel-note">Buy or sell logs</span>
               </div>
               <form className="pf-trade-form" onSubmit={handleSubmit}>
+                <CustomSelect
+                  label="Type"
+                  value={type}
+                  onChange={(val) => {
+                    setType(val);
+                    setFormError("");
+                  }}
+                  options={[
+                    { value: "BUY", label: "BUY" },
+                    { value: "SELL", label: "SELL" },
+                  ]}
+                />
                 <label className="pf-field">
                   <span className="pf-field-label">Ticker</span>
                   <input
@@ -539,7 +668,7 @@ export default function PortfolioPage() {
                   />
                 </label>
                 <label className="pf-field">
-                  <span className="pf-field-label">Buy Price</span>
+                  <span className="pf-field-label">{type === "BUY" ? "Buy Price" : "Sell Price"}</span>
                   <input
                     className="input-text pf-input"
                     type="number"
@@ -558,6 +687,7 @@ export default function PortfolioPage() {
                     type="button"
                     className="btn-secondary pf-live-btn"
                     onClick={fillCurrentPrice}
+                    style={{ paddingLeft: "0" }}
                   >
                     Use live price
                   </button>
@@ -566,7 +696,7 @@ export default function PortfolioPage() {
                     className="btn-primary pf-submit-btn"
                     disabled={isSubmitting}
                   >
-                    {isSubmitting ? "Adding..." : "Add buy"}
+                    {isSubmitting ? "Adding..." : type === "BUY" ? "Add buy" : "Add sell"}
                   </button>
                 </div>
               </form>
@@ -610,7 +740,7 @@ export default function PortfolioPage() {
                         <span className="right">Actions</span>
                       </div>
 
-                      {holdings.map((holding, index) => (
+                      {activeHoldings.map((holding, index) => (
                         <div
                           key={holding.sym}
                           className="pf-holdings-row"
@@ -672,7 +802,7 @@ export default function PortfolioPage() {
 
                     {/* Mobile/Tablet Holdings Card Grid */}
                     <div className="pf-holdings-mobile-grid">
-                      {holdings.map((holding, index) => (
+                      {activeHoldings.map((holding, index) => (
                         <div
                           key={holding.sym}
                           className="pf-mobile-card"
@@ -747,10 +877,10 @@ export default function PortfolioPage() {
                     <h2 className="db-section-title">Allocation</h2>
                   </div>
                   <div className="pf-allocation-list">
-                    {holdings.length === 0 ? (
+                    {activeHoldings.length === 0 ? (
                       <p className="pf-sidebar-empty">No positions yet.</p>
                     ) : (
-                      holdings.map((holding) => {
+                      activeHoldings.map((holding) => {
                         const width =
                           totals.currentValue > 0
                             ? (holding.currentValue / totals.currentValue) * 100
@@ -778,7 +908,7 @@ export default function PortfolioPage() {
 
                 <section className="db-section u4">
                   <div className="db-section-header">
-                    <h2 className="db-section-title">Recent Buys</h2>
+                    <h2 className="db-section-title">Recent Transactions</h2>
                   </div>
                   <div className="pf-lots-list">
                     {recentTransactions.length === 0 ? (
@@ -786,17 +916,29 @@ export default function PortfolioPage() {
                     ) : (
                       recentTransactions.map((tx) => (
                         <div key={tx.id} className="pf-lot-row">
-                          <div>
-                            <span className="pf-lot-symbol">{tx.sym}</span>
-                            <span className="pf-lot-date">
-                              {new Date(tx.transactionDate).toLocaleDateString(
-                                "en-US",
-                                {
-                                  month: "short",
-                                  day: "numeric",
-                                }
-                              )}
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                            <span style={{
+                              fontSize: "0.65rem",
+                              fontWeight: "bold",
+                              padding: "2px 5px",
+                              borderRadius: "4px",
+                              background: tx.type === "SELL" ? "rgba(242, 109, 109, 0.15)" : "rgba(176, 228, 204, 0.15)",
+                              color: tx.type === "SELL" ? "#f26d6d" : "var(--mint)"
+                            }}>
+                              {tx.type}
                             </span>
+                            <div>
+                              <span className="pf-lot-symbol">{tx.sym}</span>
+                              <span className="pf-lot-date">
+                                {new Date(tx.transactionDate).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                  }
+                                )}
+                              </span>
+                            </div>
                           </div>
                           <div className="pf-lot-values">
                             <span>{sharesFormatter.format(Number(tx.quantity))}</span>

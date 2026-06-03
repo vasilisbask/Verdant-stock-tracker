@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useSession } from "next-auth/react";
 import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
 import { getCompanyMeta } from "@/lib/stocks";
 import DetailModal from "@/components/layout/DetailModal";
 import StockLogo from "@/components/layout/StockLogo";
+import { useFinnhubWS } from "@/lib/useFinnhubWS";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface WatchItem {
@@ -85,12 +87,16 @@ function StockCard({
   onRemove,
   onTargetChange,
   onSelectSymbol,
+  onAddAlert,
+  isAuthenticated,
 }: {
   item: WatchItem;
   quote: Quote | undefined;
   onRemove: (sym: string) => void;
   onTargetChange: (sym: string, val: string) => void;
   onSelectSymbol: (sym: string) => void;
+  onAddAlert: (sym: string) => void;
+  isAuthenticated: boolean;
 }) {
   const [editingTarget, setEditingTarget] = useState(false);
   const [targetInput, setTargetInput] = useState(item.target ?? "");
@@ -115,16 +121,42 @@ function StockCard({
             <div className="wl-name">{quote?.companyName ?? item.sym}</div>
           </div>
         </div>
-        <button 
-          className="wl-remove" 
-          onClick={(e) => { e.stopPropagation(); onRemove(item.sym); }} 
-          aria-label={`Remove ${item.sym}`}
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-            <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-          </svg>
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }} onClick={e => e.stopPropagation()}>
+          {isAuthenticated && (
+            <button 
+              className="wl-alert-btn" 
+              onClick={() => onAddAlert(item.sym)}
+              aria-label={`Set price alert for ${item.sym}`}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--ink-2)",
+                cursor: "pointer",
+                padding: "6px",
+                borderRadius: "4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "all 0.2s"
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              </svg>
+            </button>
+          )}
+          <button 
+            className="wl-remove" 
+            onClick={() => onRemove(item.sym)} 
+            aria-label={`Remove ${item.sym}`}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <line x1="11" y1="1" x2="1" y2="11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </button>
+        </div>
       </div>
 
       {/* Price block */}
@@ -198,16 +230,73 @@ export default function WatchlistPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError]     = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+  const [alertSymbol, setAlertSymbol] = useState<string | null>(null);
 
   const [addInput, setAddInput]   = useState("");
   const [addError, setAddError]   = useState("");
   const [isAdding, setIsAdding]   = useState(false);
   const addRef                    = useRef<HTMLInputElement>(null);
 
-  /* Load watchlist from localStorage on mount */
+  const { data: session, status } = useSession();
+
+  const activeSymbols = useMemo(() => watchlist.map(w => w.sym), [watchlist]);
+
+  useFinnhubWS(
+    activeSymbols,
+    useCallback(({ symbol, price }) => {
+      setQuotes(prev => {
+        const old = prev[symbol];
+        const oldPrice = old ? parseFloat(old.price) : NaN;
+        const newPrice = price;
+        if (!isNaN(oldPrice) && oldPrice === newPrice) return prev;
+
+        const blinkClass = !isNaN(oldPrice) && newPrice > oldPrice ? "blink-g" : "blink-r";
+
+        setTimeout(() => {
+          setQuotes(current => {
+            const cur = current[symbol];
+            if (cur) return { ...current, [symbol]: { ...cur, blinkClass: "" } };
+            return current;
+          });
+        }, 1000);
+
+        return {
+          ...prev,
+          [symbol]: {
+            sym: symbol,
+            price: newPrice.toFixed(2),
+            chg: old ? old.chg : "—",
+            pct: old ? old.pct : "—",
+            up: old ? old.up : true,
+            companyName: old?.companyName,
+            blinkClass
+          }
+        };
+      });
+    }, [])
+  );
+
+  /* Load watchlist on mount or session change */
   useEffect(() => {
-    setWatchlist(loadWatchlist());
-  }, []);
+    if (status === "loading") return;
+
+    if (status === "authenticated") {
+      async function loadDbWatchlist() {
+        try {
+          const res = await fetch("/api/watchlist");
+          if (res.ok) {
+            const json = await res.json();
+            setWatchlist(json.data || []);
+          }
+        } catch (err) {
+          console.error("Failed to load DB watchlist:", err);
+        }
+      }
+      loadDbWatchlist();
+    } else {
+      setWatchlist(loadWatchlist());
+    }
+  }, [status]);
 
   /* Fetch quotes for all watched symbols */
   useEffect(() => {
@@ -274,45 +363,87 @@ export default function WatchlistPage() {
     setIsAdding(true);
     setAddError("");
     try {
-      const res = await fetch(`/api/stocks/quotes?symbols=${s}`);
-      if (!res.ok) {
-        throw new Error("Verification failed");
-      }
-      const json = await res.json();
-      const quote = json.data?.[0];
-      
-      if (!quote || quote.price === "—") {
-        setAddError(`Ticker symbol '${s}' does not exist or is delisted.`);
-        return;
-      }
+      if (status === "authenticated") {
+        const res = await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: s })
+        });
+        if (!res.ok) {
+          const errData = await res.json();
+          throw new Error(errData.error || "Failed to add ticker");
+        }
+        const json = await res.json();
+        const qRes = await fetch(`/api/stocks/quotes?symbols=${s}`);
+        if (qRes.ok) {
+          const qJson = await qRes.json();
+          if (qJson.data?.[0]) {
+            setQuotes(prev => ({ ...prev, [s]: qJson.data[0] }));
+          }
+        }
+        setWatchlist(prev => [...prev, json.data]);
+      } else {
+        const res = await fetch(`/api/stocks/quotes?symbols=${s}`);
+        if (!res.ok) {
+          throw new Error("Verification failed");
+        }
+        const json = await res.json();
+        const quote = json.data?.[0];
+        
+        if (!quote || quote.price === "—") {
+          setAddError(`Ticker symbol '${s}' does not exist or is delisted.`);
+          return;
+        }
 
-      // Pre-cache quote so that card displays instantly
-      setQuotes(prev => ({ ...prev, [s]: quote }));
+        setQuotes(prev => ({ ...prev, [s]: quote }));
 
-      const updated = [...watchlist, { sym: s }];
-      setWatchlist(updated);
-      saveWatchlist(updated);
+        const updated = [...watchlist, { sym: s }];
+        setWatchlist(updated);
+        saveWatchlist(updated);
+      }
       setAddInput("");
       setAddError("");
-    } catch {
-      setAddError(`Ticker symbol '${s}' does not exist or is delisted.`);
+    } catch (err: any) {
+      setAddError(err.message || `Ticker symbol '${s}' does not exist or is delisted.`);
     } finally {
       setIsAdding(false);
     }
   }
 
   /* Remove ticker */
-  function removeTicker(sym: string) {
-    const updated = watchlist.filter(w => w.sym !== sym);
-    setWatchlist(updated);
-    saveWatchlist(updated);
+  async function removeTicker(sym: string) {
+    if (status === "authenticated") {
+      try {
+        await fetch(`/api/watchlist?symbol=${sym}`, { method: "DELETE" });
+        setWatchlist(prev => prev.filter(w => w.sym !== sym));
+      } catch (err) {
+        console.error("Failed to remove from watchlist:", err);
+      }
+    } else {
+      const updated = watchlist.filter(w => w.sym !== sym);
+      setWatchlist(updated);
+      saveWatchlist(updated);
+    }
   }
 
   /* Update target */
-  function updateTarget(sym: string, val: string) {
-    const updated = watchlist.map(w => w.sym === sym ? { ...w, target: val } : w);
-    setWatchlist(updated);
-    saveWatchlist(updated);
+  async function updateTarget(sym: string, val: string) {
+    if (status === "authenticated") {
+      try {
+        await fetch("/api/watchlist", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ symbol: sym, target: val || null })
+        });
+        setWatchlist(prev => prev.map(w => w.sym === sym ? { ...w, target: val } : w));
+      } catch (err) {
+        console.error("Failed to update target price:", err);
+      }
+    } else {
+      const updated = watchlist.map(w => w.sym === sym ? { ...w, target: val } : w);
+      setWatchlist(updated);
+      saveWatchlist(updated);
+    }
   }
 
   const hasItems = watchlist.length > 0;
@@ -358,7 +489,7 @@ export default function WatchlistPage() {
             </button>
           </div>
           {addError && <p className="wl-add-error">{addError}</p>}
-          <p className="wl-add-hint">Press Enter or click Add · Watchlist is saved to this device</p>
+          <p className="wl-add-hint">Press Enter or click Add · Watchlist is saved {status === "authenticated" ? "under your account" : "locally to this device"}</p>
         </div>
 
         {/* ── Cards grid or empty state ───────────────── */}
@@ -374,6 +505,8 @@ export default function WatchlistPage() {
                   onRemove={removeTicker}
                   onTargetChange={updateTarget}
                   onSelectSymbol={setSelectedSymbol}
+                  onAddAlert={setAlertSymbol}
+                  isAuthenticated={status === "authenticated"}
                 />
               </div>
             ))}
@@ -383,7 +516,7 @@ export default function WatchlistPage() {
         {/* ── Footer note ─────────────────────────────── */}
         {hasItems && !isLoading && !isError && (
           <p className="sc-footnote u3">
-            Prices refresh every 15 seconds · Powered by Yahoo Finance · Targets stored locally
+            Prices refresh every 15 seconds · Powered by Yahoo Finance · Targets stored {status === "authenticated" ? "in database" : "locally"}
           </p>
         )}
       </main>
@@ -393,6 +526,162 @@ export default function WatchlistPage() {
       {selectedSymbol && (
         <DetailModal symbol={selectedSymbol} onClose={() => setSelectedSymbol(null)} />
       )}
+
+      {alertSymbol && (
+        <AlertModal
+          symbol={alertSymbol}
+          currentPrice={quotes[alertSymbol]?.price || "—"}
+          onClose={() => setAlertSymbol(null)}
+        />
+      )}
     </>
+  );
+}
+
+/* ─── Alert Modal ─────────────────────────────────────────── */
+function AlertModal({
+  symbol,
+  currentPrice,
+  onClose,
+}: {
+  symbol: string;
+  currentPrice: string;
+  onClose: () => void;
+}) {
+  const [targetPrice, setTargetPrice] = useState(currentPrice !== "—" ? currentPrice : "");
+  const [direction, setDirection] = useState<"ABOVE" | "BELOW">("ABOVE");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetPrice || isNaN(parseFloat(targetPrice))) {
+      setError("Please enter a valid target price.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError("");
+
+    try {
+      const res = await fetch("/api/alerts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          symbol,
+          targetPrice: parseFloat(targetPrice),
+          direction,
+          channel: "in_app"
+        })
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json();
+        throw new Error(errJson.error || "Failed to set alert.");
+      }
+
+      setSuccess(true);
+      setTimeout(onClose, 1500);
+    } catch (err: any) {
+      setError(err.message || "Failed to create alert.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose} style={{
+      position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: "rgba(0, 0, 0, 0.75)", display: "flex",
+      alignItems: "center", justifyContent: "center", zIndex: 10000,
+      backdropFilter: "blur(4px)"
+    }}>
+      <div className="modal-container" onClick={e => e.stopPropagation()} style={{
+        background: "rgba(17, 31, 28, 0.98)", border: "1px solid var(--rule-light)",
+        borderRadius: "8px", padding: "24px", width: "100%", maxWidth: "380px",
+        boxShadow: "0 12px 40px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.03)", position: "relative",
+        animation: "slideDown 0.2s ease-out"
+      }}>
+        <button onClick={onClose} style={{
+          position: "absolute", top: "16px", right: "16px",
+          background: "none", border: "none", color: "var(--ink-2)",
+          cursor: "pointer", fontSize: "1.25rem", lineHeight: 1
+        }}>&times;</button>
+
+        <h3 style={{ margin: "0 0 6px 0", fontSize: "1.2rem", fontWeight: "600", color: "var(--ink)" }}>Set Price Alert</h3>
+        <p style={{ margin: "0 0 20px 0", fontSize: "0.85rem", color: "var(--ink-2)" }}>
+          Alert me when <strong>{symbol}</strong> goes:
+        </p>
+
+        {success ? (
+          <div style={{ textAlign: "center", padding: "16px 0" }}>
+            <span style={{ color: "var(--mint)", fontSize: "2rem" }}>✓</span>
+            <p style={{ margin: "8px 0 0 0", color: "var(--mint)", fontWeight: "500", fontSize: "0.9rem" }}>Alert set successfully!</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit}>
+            <div style={{ display: "flex", gap: "8px", marginBottom: "16px" }}>
+              <button
+                type="button"
+                onClick={() => setDirection("ABOVE")}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: "6px",
+                  border: direction === "ABOVE" ? "1px solid var(--mint)" : "1px solid var(--rule-light)",
+                  background: direction === "ABOVE" ? "rgba(176, 228, 204, 0.05)" : "transparent",
+                  color: direction === "ABOVE" ? "var(--mint)" : "var(--ink-2)",
+                  fontWeight: "600", cursor: "pointer", fontSize: "0.8rem", transition: "all 0.2s"
+                }}
+              >
+                ▲ ABOVE
+              </button>
+              <button
+                type="button"
+                onClick={() => setDirection("BELOW")}
+                style={{
+                  flex: 1, padding: "10px", borderRadius: "6px",
+                  border: direction === "BELOW" ? "1px solid var(--mint)" : "1px solid var(--rule-light)",
+                  background: direction === "BELOW" ? "rgba(176, 228, 204, 0.05)" : "transparent",
+                  color: direction === "BELOW" ? "var(--mint)" : "var(--ink-2)",
+                  fontWeight: "600", cursor: "pointer", fontSize: "0.8rem", transition: "all 0.2s"
+                }}
+              >
+                ▼ BELOW
+              </button>
+            </div>
+
+            <div className="pf-field" style={{ marginBottom: "20px" }}>
+              <span className="pf-field-label" style={{ display: "block", fontSize: "0.75rem", color: "var(--ink-2)", marginBottom: "6px" }}>Target Price ($)</span>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                className="input-text"
+                style={{
+                  width: "100%", padding: "10px", background: "rgba(9, 20, 19, 0.6)",
+                  border: "1px solid var(--rule-light)", borderRadius: "6px",
+                  color: "var(--ink)", outline: "none", boxSizing: "border-box"
+                }}
+                value={targetPrice}
+                onChange={e => setTargetPrice(e.target.value)}
+                placeholder="e.g. 200.00"
+                required
+              />
+            </div>
+
+            {error && <p style={{ color: "#f26d6d", fontSize: "0.8rem", margin: "0 0 16px 0" }}>{error}</p>}
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="btn-primary"
+              style={{ width: "100%", padding: "12px", borderRadius: "6px", cursor: "pointer", fontWeight: "600" }}
+            >
+              {isSubmitting ? "Saving..." : "Set Price Alert"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }

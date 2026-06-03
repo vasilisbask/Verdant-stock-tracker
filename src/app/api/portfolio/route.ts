@@ -8,7 +8,7 @@ const yahooFinance = new YahooFinance({
   suppressNotices: ["yahooSurvey"]
 });
 
-import { TransactionType } from "@/generated/prisma/client";
+import { TransactionType } from "@prisma/client";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 
@@ -22,12 +22,14 @@ const transactionSchema = z.object({
   quantity: z.coerce.number().positive("Quantity must be greater than zero"),
   price: z.coerce.number().positive("Price must be greater than zero"),
   companyName: z.string().trim().max(120).optional(),
+  type: z.enum(["BUY", "SELL"]).optional().default("BUY"),
 });
 
 function toPortfolioTransaction(tx: {
   id: string;
   quantity: unknown;
   price: unknown;
+  type: TransactionType;
   transactionDate: Date;
   stock: {
     symbol: string;
@@ -40,6 +42,7 @@ function toPortfolioTransaction(tx: {
     companyName: tx.stock.companyName,
     quantity: String(tx.quantity),
     price: String(tx.price),
+    type: tx.type,
     transactionDate: tx.transactionDate.toISOString(),
   };
 }
@@ -60,7 +63,6 @@ export async function GET() {
     const transactions = await db.transaction.findMany({
       where: {
         userId,
-        type: TransactionType.BUY,
       },
       include: {
         stock: {
@@ -133,6 +135,25 @@ export async function POST(req: NextRequest) {
 
     const quantity = parsed.data.quantity.toString();
     const price = parsed.data.price.toString();
+    const type = parsed.data.type || TransactionType.BUY;
+    
+    // For sells, verify user has enough shares first
+    if (type === "SELL") {
+      const allTx = await db.transaction.findMany({
+        where: { userId, stock: { symbol } }
+      });
+      const netShares = allTx.reduce((acc, current) => {
+        const qty = Number(current.quantity);
+        return current.type === "BUY" ? acc + qty : acc - qty;
+      }, 0);
+      
+      if (netShares < parsed.data.quantity) {
+        return NextResponse.json(
+          { error: `Insufficient shares to sell. You currently own ${netShares} shares.` },
+          { status: 400 }
+        );
+      }
+    }
 
     const transaction = await db.$transaction(async (tx) => {
       const stock = await tx.stock.upsert({
@@ -155,7 +176,7 @@ export async function POST(req: NextRequest) {
         data: {
           userId,
           stockId: stock.id,
-          type: TransactionType.BUY,
+          type,
           quantity,
           price,
         },
@@ -232,7 +253,6 @@ export async function DELETE(req: NextRequest) {
       where: {
         userId,
         stockId: stock.id,
-        type: TransactionType.BUY,
       },
     });
 
