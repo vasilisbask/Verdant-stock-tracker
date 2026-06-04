@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.git
+.gitignore
+*.log
+*.zip
+Dockerfile
+docker-compose.yml
+k8s-manifest.yaml
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env

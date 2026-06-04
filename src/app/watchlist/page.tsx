@@ -1,15 +1,14 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
 import { getCompanyMeta } from "@/lib/stocks";
 import DetailModal from "@/components/layout/DetailModal";
 import StockLogo from "@/components/layout/StockLogo";
-import { useFinnhubWS } from "@/lib/useFinnhubWS";
 
-/* ─── Types ───────────────────────────────────────────────── */
+/* Types */
 interface WatchItem {
   sym: string;
   target?: string; // price target, stored as string for input binding
@@ -28,7 +27,7 @@ interface Quote {
 
 const STORAGE_KEY = "verdant_watchlist_v1";
 
-/* ─── Helpers ─────────────────────────────────────────────── */
+/* Helpers */
 function loadWatchlist(): WatchItem[] {
   if (typeof window === "undefined") return [];
   try {
@@ -48,7 +47,7 @@ function pctToTarget(price: string, target: string): { dist: string; above: bool
   return { dist: Math.abs(diff).toFixed(1), above: diff >= 0 };
 }
 
-/* ─── Empty state ─────────────────────────────────────────── */
+/* Empty state */
 function EmptyState({ onExampleAdd }: { onExampleAdd: (sym: string) => void }) {
   const examples = ["AAPL", "NVDA", "MSFT", "TSLA"];
   return (
@@ -80,7 +79,7 @@ function EmptyState({ onExampleAdd }: { onExampleAdd: (sym: string) => void }) {
   );
 }
 
-/* ─── Stock card ──────────────────────────────────────────── */
+/* Stock card */
 function StockCard({
   item,
   quote,
@@ -223,7 +222,7 @@ function StockCard({
   );
 }
 
-/* ─── Main page ───────────────────────────────────────────── */
+/* Main page */
 export default function WatchlistPage() {
   const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
   const [quotes, setQuotes]       = useState<Record<string, Quote>>({});
@@ -239,42 +238,6 @@ export default function WatchlistPage() {
 
   const { data: session, status } = useSession();
 
-  const activeSymbols = useMemo(() => watchlist.map(w => w.sym), [watchlist]);
-
-  useFinnhubWS(
-    activeSymbols,
-    useCallback(({ symbol, price }) => {
-      setQuotes(prev => {
-        const old = prev[symbol];
-        const oldPrice = old ? parseFloat(old.price) : NaN;
-        const newPrice = price;
-        if (!isNaN(oldPrice) && oldPrice === newPrice) return prev;
-
-        const blinkClass = !isNaN(oldPrice) && newPrice > oldPrice ? "blink-g" : "blink-r";
-
-        setTimeout(() => {
-          setQuotes(current => {
-            const cur = current[symbol];
-            if (cur) return { ...current, [symbol]: { ...cur, blinkClass: "" } };
-            return current;
-          });
-        }, 1000);
-
-        return {
-          ...prev,
-          [symbol]: {
-            sym: symbol,
-            price: newPrice.toFixed(2),
-            chg: old ? old.chg : "—",
-            pct: old ? old.pct : "—",
-            up: old ? old.up : true,
-            companyName: old?.companyName,
-            blinkClass
-          }
-        };
-      });
-    }, [])
-  );
 
   /* Load watchlist on mount or session change */
   useEffect(() => {
@@ -454,7 +417,7 @@ export default function WatchlistPage() {
 
       <main className="wl-page">
 
-        {/* ── Header ─────────────────────────────────── */}
+        {/* Header */}
         <header className="wl-header u0">
           <div>
             <p className="wl-tag">My Watchlist</p>
@@ -470,7 +433,7 @@ export default function WatchlistPage() {
           )}
         </header>
 
-        {/* ── Add ticker input ────────────────────────── */}
+        {/* Add ticker input */}
         <div className="wl-add-row u1">
           <div className="wl-add-wrapper">
             <input
@@ -492,7 +455,7 @@ export default function WatchlistPage() {
           <p className="wl-add-hint">Press Enter or click Add · Watchlist is saved {status === "authenticated" ? "under your account" : "locally to this device"}</p>
         </div>
 
-        {/* ── Cards grid or empty state ───────────────── */}
+        {/* Cards grid or empty state */}
         {!hasItems ? (
           <EmptyState onExampleAdd={sym => addTicker(sym)} />
         ) : (
@@ -513,7 +476,7 @@ export default function WatchlistPage() {
           </div>
         )}
 
-        {/* ── Footer note ─────────────────────────────── */}
+        {/* Footer note */}
         {hasItems && !isLoading && !isError && (
           <p className="sc-footnote u3">
             Prices refresh every 15 seconds · Powered by Yahoo Finance · Targets stored {status === "authenticated" ? "in database" : "locally"}
@@ -538,7 +501,7 @@ export default function WatchlistPage() {
   );
 }
 
-/* ─── Alert Modal ─────────────────────────────────────────── */
+/* Alert Modal */
 function AlertModal({
   symbol,
   currentPrice,

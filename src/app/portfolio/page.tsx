@@ -9,7 +9,6 @@ import Footer from "@/components/layout/Footer";
 import PillHeader from "@/components/layout/PillHeader";
 import StockLogo from "@/components/layout/StockLogo";
 import { getCompanyMeta } from "@/lib/stocks";
-import { useFinnhubWS } from "@/lib/useFinnhubWS";
 
 interface Quote {
   sym: string;
@@ -275,35 +274,6 @@ export default function PortfolioPage() {
       .sort()
       .join(",");
   }, [transactions]);
-
-  const symbolsArray = useMemo(() => {
-    return Array.from(new Set(transactions.map((tx) => tx.sym))).sort();
-  }, [transactions]);
-
-  useFinnhubWS(
-    symbolsArray,
-    useCallback(({ symbol, price }) => {
-      setQuotes(prev => {
-        const old = prev[symbol];
-        const oldPrice = old ? parseFloat(old.price) : NaN;
-        const newPrice = price;
-        if (!isNaN(oldPrice) && oldPrice === newPrice) return prev;
-
-        return {
-          ...prev,
-          [symbol]: {
-            sym: symbol,
-            price: newPrice.toFixed(2),
-            chg: old ? old.chg : "—",
-            pct: old ? old.pct : "—",
-            up: old ? old.up : true,
-            vol: old ? old.vol : "—",
-            companyName: old?.companyName,
-          }
-        };
-      });
-    }, [])
-  );
 
   useEffect(() => {
     let active = true;

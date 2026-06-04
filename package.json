@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "docker-compose up -d db && next dev",
+    "db:up": "docker-compose up -d db",
+    "db:down": "docker-compose stop db",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -34,5 +36,10 @@
     "eslint-config-next": "16.2.6",
     "prisma": "^7.8.0",
     "typescript": "^5"
+  },
+  "overrides": {
+    "uuid": "^11.1.1",
+    "postcss": "^8.5.15",
+    "@hono/node-server": "^1.19.13"
   }
 }
