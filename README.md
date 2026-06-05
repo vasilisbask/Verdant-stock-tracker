@@ -11,12 +11,17 @@ Verdant was built during an internship at GSIS, where the brief was to deliver a
 ---
  
 ## Screenshots
- 
-![Dashboard](./public/docs/dashboard.png)
-![Markets](./public/docs/markets.png)
+### Home Page
+![Home](./public/docs/home.png)
+### Portfolio Page
 ![Portfolio](./public/docs/portfolio.png)
+### Screener Page
 ![Screener](./public/docs/screener.png)
+### Watchlist Page
 ![Watchlist](./public/docs/watchlist.png)
+### Markets Page
+![Markets](./public/docs/markets.png)
+
  
 ---
  
