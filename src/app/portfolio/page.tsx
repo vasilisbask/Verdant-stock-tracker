@@ -201,6 +201,576 @@ function CustomSelect({ label, value, onChange, options }: CustomSelectProps) {
   );
 }
 
+interface PerformancePoint {
+  date: string;
+  value: number;
+}
+
+function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
+  const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
+
+  if (data.length === 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "180px", color: "var(--ink-3)", fontSize: "0.85rem" }}>
+        No transaction history available.
+      </div>
+    );
+  }
+
+  const values = data.map((d) => d.value);
+  const maxVal = Math.max(...values);
+  const minVal = Math.min(...values);
+  const range = maxVal - minVal;
+  
+  const chartMin = Math.max(0, minVal - (range === 0 ? 100 : range * 0.15));
+  const chartMax = maxVal + (range === 0 ? 100 : range * 0.15);
+
+  const width = 600;
+  const height = 180;
+  const paddingLeft = 55;
+  const paddingRight = 15;
+  const paddingTop = 20;
+  const paddingBottom = 25;
+
+  const chartWidth = width - paddingLeft - paddingRight;
+  const chartHeight = height - paddingTop - paddingBottom;
+
+  const points = data.map((d, index) => {
+    const x = paddingLeft + (index / (data.length - 1)) * chartWidth;
+    const y = paddingTop + (1 - (d.value - chartMin) / (chartMax - chartMin)) * chartHeight;
+    return { x, y, date: d.date, value: d.value };
+  });
+
+  const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+
+  const areaPath = points.length > 0 
+    ? `${linePath} L ${points[points.length - 1].x} ${height - paddingBottom} L ${points[0].x} ${height - paddingBottom} Z` 
+    : "";
+
+  const gridLevels = 4;
+  const gridLines = Array.from({ length: gridLevels }).map((_, i) => {
+    const ratio = i / (gridLevels - 1);
+    const value = chartMax - ratio * (chartMax - chartMin);
+    const y = paddingTop + ratio * chartHeight;
+    return { y, value };
+  });
+
+  const xLabelCount = 5;
+  const xLabels = Array.from({ length: xLabelCount }).map((_, i) => {
+    const index = Math.round((i / (xLabelCount - 1)) * (data.length - 1));
+    return data[index];
+  });
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => {
+    const svgRect = e.currentTarget.getBoundingClientRect();
+    const mouseX = e.clientX - svgRect.left;
+    const svgWidth = svgRect.width;
+    const scaledX = (mouseX / svgWidth) * width;
+
+    let closest = points[0];
+    let minDiff = Math.abs(points[0].x - scaledX);
+    for (const p of points) {
+      const diff = Math.abs(p.x - scaledX);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closest = p;
+      }
+    }
+    setHoveredPoint(closest);
+  };
+
+  return (
+    <div className="portfolio-performance-card" style={{ position: "relative", width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "12px" }}>
+        <h2 className="db-section-title" style={{ margin: 0 }}>PORTFOLIO VALUE (30D)</h2>
+        <span style={{ fontFamily: "var(--f-mono)", fontSize: "0.85rem", color: "var(--ink-2)" }}>
+          {hoveredPoint ? (
+            <>
+              <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>{hoveredPoint.date}:</span>
+              <strong style={{ color: "var(--mint)" }}>${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </>
+          ) : (
+            <>
+              <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>Current:</span>
+              <strong style={{ color: "var(--ink)" }}>${data[data.length - 1].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+            </>
+          )}
+        </span>
+      </div>
+
+      <svg 
+        viewBox={`0 0 ${width} ${height}`} 
+        width="100%" 
+        height="100%" 
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHoveredPoint(null)}
+        style={{ overflow: "visible", cursor: "crosshair" }}
+      >
+        <defs>
+          <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--mint)" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="var(--mint)" stopOpacity="0.0" />
+          </linearGradient>
+        </defs>
+
+        {gridLines.map((line, idx) => (
+          <g key={idx}>
+            <line 
+              x1={paddingLeft} 
+              y1={line.y} 
+              x2={width - paddingRight} 
+              y2={line.y} 
+              stroke="var(--rule)" 
+              strokeWidth="1" 
+              strokeDasharray="4 4"
+            />
+            <text 
+              x={paddingLeft - 8} 
+              y={line.y + 3} 
+              textAnchor="end" 
+              fill="var(--ink-3)" 
+              style={{ fontFamily: "var(--f-mono)", fontSize: "9px" }}
+            >
+              ${line.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            </text>
+          </g>
+        ))}
+
+        {areaPath && (
+          <path d={areaPath} fill="url(#chartGradient)" />
+        )}
+        {linePath && (
+          <path 
+            d={linePath} 
+            fill="none" 
+            stroke="var(--mint)" 
+            strokeWidth="1.5" 
+            strokeLinecap="round" 
+            strokeLinejoin="round" 
+          />
+        )}
+
+        {hoveredPoint && (
+          <g>
+            <line 
+              x1={hoveredPoint.x} 
+              y1={paddingTop} 
+              x2={hoveredPoint.x} 
+              y2={height - paddingBottom} 
+              stroke="var(--brand-light)" 
+              strokeWidth="1" 
+              strokeDasharray="2 2"
+            />
+            <circle 
+              cx={hoveredPoint.x} 
+              cy={hoveredPoint.y} 
+              r="4.5" 
+              fill="var(--bg-card)" 
+              stroke="var(--mint)" 
+              strokeWidth="1.5" 
+            />
+          </g>
+        )}
+
+        {xLabels.map((label, idx) => {
+          if (!label) return null;
+          const index = data.findIndex(x => x.date === label.date);
+          const x = paddingLeft + (index / (data.length - 1)) * chartWidth;
+          return (
+            <text
+              key={idx}
+              x={x}
+              y={height - paddingBottom + 14}
+              textAnchor="middle"
+              fill="var(--ink-3)"
+              style={{ fontFamily: "var(--f-mono)", fontSize: "8px" }}
+            >
+              {label.date}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+
+function PerformanceChartSkeleton() {
+  return (
+    <div style={{ width: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
+        <span className="skeleton-cell pulse" style={{ width: "140px", height: "14px", borderRadius: "4px" }} />
+        <span className="skeleton-cell pulse" style={{ width: "100px", height: "14px", borderRadius: "4px" }} />
+      </div>
+      <div className="skeleton-cell pulse" style={{ width: "100%", height: "180px", opacity: 0.1, borderRadius: "6px" }} />
+    </div>
+  );
+}
+
+function AllTransactionsModal({
+  transactions,
+  onClose,
+  onRemoveTransaction,
+  performanceData,
+  isLoadingPerformance,
+  totals,
+  activeHoldings,
+}: {
+  transactions: PortfolioTransaction[];
+  onClose: () => void;
+  onRemoveTransaction: (id: string) => Promise<void>;
+  performanceData: PerformancePoint[];
+  isLoadingPerformance: boolean;
+  totals: {
+    invested: number;
+    currentValue: number;
+    gainLoss: number;
+    gainLossPct: number;
+    liveCount: number;
+    realizedGainLoss: number;
+  };
+  activeHoldings: Holding[];
+}) {
+  const [activeTab, setActiveTab] = useState<"overview" | "transactions">("overview");
+  const [hoveredPoint, setHoveredPoint] = useState<{
+    x: number;
+    y: number;
+    value: number;
+    date: string;
+  } | null>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  // Close on ESC
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  const isUp = totals.gainLoss >= 0;
+  const priceColorClass = isUp ? "up" : "down";
+  const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
+
+  // Chart calculations
+  const values = performanceData.map((d) => d.value);
+  const maxVal = values.length > 0 ? Math.max(...values) : 0;
+  const minVal = values.length > 0 ? Math.min(...values) : 0;
+  const range = maxVal - minVal;
+
+  const chartMin = Math.max(0, minVal - (range === 0 ? 100 : range * 0.15));
+  const chartMax = maxVal + (range === 0 ? 100 : range * 0.15);
+  const priceRange = chartMax - chartMin || 1;
+
+  const svgWidth = 600;
+  const svgHeight = 220;
+  const paddingX = 40;
+  const paddingY = 25;
+  const chartWidth = svgWidth - paddingX * 2;
+  const chartHeight = svgHeight - paddingY * 2;
+
+  const points = performanceData.map((d, index) => {
+    const x = paddingX + (index / (performanceData.length - 1)) * chartWidth;
+    const y = svgHeight - paddingY - ((d.value - chartMin) / priceRange) * chartHeight;
+    return { x, y, value: d.value, date: d.date };
+  });
+
+  const linePathD = points.reduce((acc, p, i) => {
+    return acc + (i === 0 ? `M ${p.x} ${p.y}` : ` L ${p.x} ${p.y}`);
+  }, "");
+
+  const areaPathD = points.length > 0 
+    ? `${linePathD} L ${points[points.length - 1].x} ${svgHeight - paddingY} L ${points[0].x} ${svgHeight - paddingY} Z`
+    : "";
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => {
+    if (!svgRef.current || points.length === 0) return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const svgMouseX = (mouseX / rect.width) * svgWidth;
+
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    points.forEach((p, idx) => {
+      const dist = Math.abs(p.x - svgMouseX);
+      if (dist < minDistance) {
+        minDistance = dist;
+        closestIndex = idx;
+      }
+    });
+
+    const closestPoint = points[closestIndex];
+    setHoveredPoint({
+      x: closestPoint.x,
+      y: closestPoint.y,
+      value: closestPoint.value,
+      date: closestPoint.date,
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setHoveredPoint(null);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div 
+        className="modal-container" 
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: "680px" }}
+      >
+        {/* Backdrop Glow */}
+        <div className={`modal-glow ${priceColorClass}`} />
+
+        {/* Modal Close Action */}
+        <button className="modal-close-btn" onClick={onClose} aria-label="Close transactions modal">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M1 1L13 13M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        <div className="modal-main-content">
+          <header className="modal-header-block">
+            <div>
+              <div className="modal-title-row">
+                <h2 className="modal-symbol-title">Portfolio</h2>
+                <span className="modal-sector-badge">Active</span>
+              </div>
+              <h3 className="modal-company-name">Overview & Transaction History</h3>
+            </div>
+
+            <div className="modal-price-block">
+              <div className="modal-current-price">
+                {currency.format(totals.currentValue)}
+              </div>
+              <div className={`modal-pct-change ${priceColorClass}`}>
+                {totals.gainLoss >= 0 ? "+" : ""}{currency.format(totals.gainLoss)} ({totals.gainLossPct >= 0 ? "+" : ""}{totals.gainLossPct.toFixed(2)}%)
+              </div>
+            </div>
+          </header>
+
+          <nav className="modal-tabs-nav">
+            {[
+              { id: "overview", label: "Overview" },
+              { id: "transactions", label: `All Transactions (${transactions.length})` }
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`modal-tab-btn ${activeTab === tab.id ? "active" : ""}`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+
+          {activeTab === "overview" && (
+            <>
+              <section className="modal-chart-section">
+                <div className="modal-chart-header">
+                  <span className="modal-chart-label">30-Day Value Trend</span>
+                  {hoveredPoint ? (
+                    <div className="modal-chart-tooltip">
+                      <span className="tooltip-date">{hoveredPoint.date}:</span>
+                      <span className="tooltip-price">${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    </div>
+                  ) : (
+                    <span className="modal-chart-instructions">Hover chart to explore valuation</span>
+                  )}
+                </div>
+
+                {isLoadingPerformance ? (
+                  <div style={{ height: "220px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span className="skeleton-cell pulse" style={{ width: "80px", height: "16px", borderRadius: "2px" }} />
+                  </div>
+                ) : performanceData.length > 1 ? (
+                  <svg
+                    ref={svgRef}
+                    viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                    width="100%"
+                    height="100%"
+                    className="modal-svg-canvas"
+                    onMouseMove={handleMouseMove}
+                    onMouseLeave={handleMouseLeave}
+                  >
+                    <defs>
+                      <linearGradient id="modalAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={strokeColor} stopOpacity="0.18" />
+                        <stop offset="100%" stopColor={strokeColor} stopOpacity="0.00" />
+                      </linearGradient>
+                    </defs>
+
+                    {Array.from({ length: 4 }).map((_, i) => {
+                      const y = paddingY + (i / 3) * chartHeight;
+                      const val = chartMax - (i / 3) * (chartMax - chartMin);
+                      return (
+                        <g key={i}>
+                          <line 
+                            x1={paddingX} 
+                            y1={y} 
+                            x2={svgWidth - paddingX} 
+                            y2={y} 
+                            className="modal-chart-grid-line"
+                          />
+                          <text
+                            x={paddingX - 8}
+                            y={y + 4}
+                            className="modal-chart-axis-text"
+                            textAnchor="end"
+                          >
+                            ${val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          </text>
+                        </g>
+                      );
+                    })}
+
+                    <path d={areaPathD} fill="url(#modalAreaGradient)" />
+                    <path d={linePathD} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" />
+
+                    {/* Active hover crosshair and tracking dot */}
+                    {hoveredPoint && (
+                      <>
+                        <line
+                          x1={hoveredPoint.x}
+                          y1={paddingY}
+                          x2={hoveredPoint.x}
+                          y2={svgHeight - paddingY}
+                          className="modal-chart-crosshair"
+                        />
+                        <circle
+                          cx={hoveredPoint.x}
+                          cy={hoveredPoint.y}
+                          r="5.5"
+                          fill={strokeColor}
+                          stroke="var(--bg-core)"
+                          strokeWidth="2.5"
+                          className="modal-chart-interactive-dot"
+                        />
+                      </>
+                    )}
+
+                    {/* Min and Max X labels */}
+                    <text
+                      x={paddingX}
+                      y={svgHeight - 8}
+                      className="modal-chart-axis-text"
+                    >
+                      {performanceData[0].date}
+                    </text>
+                    <text
+                      x={svgWidth - paddingX}
+                      y={svgHeight - 8}
+                      className="modal-chart-axis-text"
+                      textAnchor="end"
+                    >
+                      {performanceData[performanceData.length - 1].date}
+                    </text>
+                  </svg>
+                ) : (
+                  <div className="modal-no-chart">Historical trend data not available.</div>
+                )}
+              </section>
+
+              {/* Portfolio Description */}
+              <section className="modal-desc-section">
+                <h4 className="modal-section-subtitle">Portfolio Summary</h4>
+                <p className="modal-desc-text">
+                  Your investment portfolio consists of {activeHoldings.length} active positions. 
+                  The total invested capital is {currency.format(totals.invested)}, which currently holds a market valuation of {currency.format(totals.currentValue)}. 
+                  Your net performance stands at an unrealized profit/loss of {currency.format(totals.gainLoss)} ({totals.gainLossPct >= 0 ? "+" : ""}{totals.gainLossPct.toFixed(2)}%), 
+                  with a total of {transactions.length} transactions recorded since inception.
+                </p>
+              </section>
+
+              {/* Stats Grid */}
+              <section className="modal-stats-section">
+                <h4 className="modal-section-subtitle">Portfolio Statistics</h4>
+                <div className="modal-stats-grid">
+                  {[
+                    { label: "Current Value", value: currency.format(totals.currentValue) },
+                    { label: "Invested Capital", value: currency.format(totals.invested) },
+                    { label: "Unrealized P/L", value: `${totals.gainLoss >= 0 ? "+" : ""}${currency.format(totals.gainLoss)} (${totals.gainLossPct >= 0 ? "+" : ""}${totals.gainLossPct.toFixed(2)}%)` },
+                    { label: "Realized P/L", value: `${totals.realizedGainLoss >= 0 ? "+" : ""}${currency.format(totals.realizedGainLoss)}` },
+                    { label: "Active Holdings", value: `${activeHoldings.length} position${activeHoldings.length !== 1 ? 's' : ''}` },
+                    { label: "Total Transactions", value: `${transactions.length} record${transactions.length !== 1 ? 's' : ''}` }
+                  ].map(item => (
+                    <div key={item.label} className="modal-stat-card">
+                      <span className="modal-stat-label">{item.label}</span>
+                      <span className="modal-stat-value">{item.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            </>
+          )}
+
+          {activeTab === "transactions" && (
+            <section className="modal-tx-section" style={{ marginTop: 0 }}>
+              {transactions.length === 0 ? (
+                <div className="modal-restricted-card">
+                  <span className="modal-icon-wrapper">
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="modal-restricted-empty-icon">
+                      <path d="M12 20V10M18 20V4M6 20v-6"/>
+                    </svg>
+                  </span>
+                  <h5 className="modal-restricted-title">No Transactions Yet</h5>
+                  <p className="modal-restricted-desc">
+                    Record your first buy or sell transaction to populate the log.
+                  </p>
+                </div>
+              ) : (
+                <div className="modal-tx-table-container" style={{ maxHeight: "380px", overflowY: "auto" }}>
+                  <table className="modal-tx-table">
+                    <thead>
+                      <tr className="modal-tx-tr">
+                        <th className="modal-tx-th">TYPE</th>
+                        <th className="modal-tx-th">DATE</th>
+                        <th className="modal-tx-th">STOCK</th>
+                        <th className="modal-tx-th right">QUANTITY</th>
+                        <th className="modal-tx-th right">PRICE</th>
+                        <th className="modal-tx-th right">TOTAL</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {transactions.map((tx) => {
+                        const qty = parseFloat(tx.quantity) || 0;
+                        const prc = parseFloat(tx.price) || 0;
+                        const total = qty * prc;
+                        return (
+                          <tr key={tx.id} className="modal-tx-tr">
+                            <td className="modal-tx-td highlight">
+                              <span style={{
+                                fontSize: "9px",
+                                fontWeight: "bold",
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                background: tx.type === "SELL" ? "rgba(242, 109, 109, 0.12)" : "rgba(176, 228, 204, 0.12)",
+                                color: tx.type === "SELL" ? "#f26d6d" : "var(--mint)"
+                              }}>
+                                {tx.type}
+                              </span>
+                            </td>
+                            <td className="modal-tx-td highlight">{new Date(tx.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
+                            <td className="modal-tx-td highlight-bold">{tx.sym}</td>
+                            <td className="modal-tx-td highlight-bold right">{qty}</td>
+                            <td className="modal-tx-td right">${prc.toFixed(2)}</td>
+                            <td className="modal-tx-td mint-bold right">${total.toFixed(2)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PortfolioPage() {
   const { data: session, status } = useSession();
 
@@ -212,6 +782,10 @@ export default function PortfolioPage() {
   const [formError, setFormError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
+
+  const [performanceData, setPerformanceData] = useState<PerformancePoint[]>([]);
+  const [isLoadingPerformance, setIsLoadingPerformance] = useState(true);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
 
   const [symbol, setSymbol] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -237,6 +811,28 @@ export default function PortfolioPage() {
       setIsLoadingPortfolio(false);
     }
   }, [status]);
+
+  const loadPerformance = useCallback(async () => {
+    if (status !== "authenticated") return;
+    setIsLoadingPerformance(true);
+    try {
+      const res = await fetch("/api/portfolio/performance");
+      if (res.ok) {
+        const json = await res.json();
+        setPerformanceData(json.data || []);
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio performance:", err);
+    } finally {
+      setIsLoadingPerformance(false);
+    }
+  }, [status]);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      loadPerformance();
+    }
+  }, [status, transactions.length, loadPerformance]);
 
   useEffect(() => {
     let active = true;
@@ -517,6 +1113,23 @@ export default function PortfolioPage() {
     }
   }
 
+  async function removeTransaction(id: string) {
+    if (!confirm("Are you sure you want to delete this transaction?")) return;
+    try {
+      const res = await fetch(`/api/portfolio?transactionId=${id}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        throw new Error("Could not remove transaction");
+      }
+
+      await loadPortfolio();
+    } catch {
+      setFormError("Could not remove transaction.");
+    }
+  }
+
   return (
     <>
       <PillHeader />
@@ -686,172 +1299,183 @@ export default function PortfolioPage() {
             </section>
 
             <div className="db-body pf-body">
-              <section className="db-section db-section--wide u3">
-                <div className="db-section-header">
-                  <h2 className="db-section-title">Holdings</h2>
-                  <span className="pf-panel-note">
-                    Prices refresh every 15s
-                  </span>
-                </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "20px", width: "100%", minWidth: 0 }}>
+                {/* Performance History Chart */}
+                <section className="db-section u2.5" style={{ padding: "20px 24px" }}>
+                  {isLoadingPerformance ? (
+                    <PerformanceChartSkeleton />
+                  ) : (
+                    <PortfolioPerformanceChart data={performanceData} />
+                  )}
+                </section>
 
-                {isLoadingPortfolio ? (
-                  <div className="pf-loading">
-                    {Array.from({ length: 5 }).map((_, index) => (
-                      <span key={index} className="skeleton-cell pulse" />
-                    ))}
+                <section className="db-section db-section--wide u3">
+                  <div className="db-section-header">
+                    <h2 className="db-section-title">Holdings</h2>
+                    <span className="pf-panel-note">
+                      Prices refresh every 15s
+                    </span>
                   </div>
-                ) : !hasHoldings ? (
-                  <div className="db-empty pf-empty">
-                    <p className="db-empty-text">
-                      Add your first purchase to see cost basis, market value,
-                      and unrealized P/L.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Desktop Holdings Table */}
-                    <div className="pf-holdings-table">
-                      <div className="pf-holdings-header">
-                        <span>Stock</span>
-                        <span className="right">Qty</span>
-                        <span className="right">Avg Cost</span>
-                        <span className="right">Current</span>
-                        <span className="right">Invested</span>
-                        <span className="right">Value</span>
-                        <span className="right">P/L</span>
-                        <span className="right">Actions</span>
+
+                  {isLoadingPortfolio ? (
+                    <div className="pf-loading">
+                      {Array.from({ length: 5 }).map((_, index) => (
+                        <span key={index} className="skeleton-cell pulse" />
+                      ))}
+                    </div>
+                  ) : !hasHoldings ? (
+                    <div className="db-empty pf-empty">
+                      <p className="db-empty-text">
+                        Add your first purchase to see cost basis, market value,
+                        and unrealized P/L.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Desktop Holdings Table */}
+                      <div className="pf-holdings-table">
+                        <div className="pf-holdings-header">
+                          <span>Stock</span>
+                          <span className="right">Qty</span>
+                          <span className="right">Avg Cost</span>
+                          <span className="right">Current</span>
+                          <span className="right">Invested</span>
+                          <span className="right">Value</span>
+                          <span className="right">P/L</span>
+                          <span className="right">Actions</span>
+                        </div>
+
+                        {activeHoldings.map((holding, index) => (
+                          <div
+                            key={holding.sym}
+                            className="pf-holdings-row"
+                            style={{ animationDelay: `${index * 0.03}s` }}
+                          >
+                            <button
+                              className="pf-stock-cell"
+                              onClick={() => setSelectedSymbol(holding.sym)}
+                            >
+                              <StockLogo symbol={holding.sym} companyName={holding.companyName} size={24} />
+                              <div className="pf-stock-cell-meta">
+                                <span className="pf-stock-symbol">
+                                  {holding.sym}
+                                </span>
+                                <span className="pf-stock-name">
+                                  {holding.companyName}
+                                </span>
+                              </div>
+                            </button>
+                            <span className="right">
+                              {sharesFormatter.format(holding.quantity)}
+                            </span>
+                            <span className="right">
+                              {currency.format(holding.avgPrice)}
+                            </span>
+                            <span className="right">
+                              {holding.hasLivePrice
+                                ? currency.format(holding.currentPrice)
+                                : "Pending"}
+                            </span>
+                            <span className="right">
+                              {currency.format(holding.invested)}
+                            </span>
+                            <span className="right">
+                              {currency.format(holding.currentValue)}
+                            </span>
+                            <span
+                              className={`right pf-pl ${
+                                holding.gainLoss >= 0 ? "up" : "down"
+                              }`}
+                            >
+                              {currency.format(holding.gainLoss)}
+                              <small>{formatPercent(holding.gainLossPct)}</small>
+                            </span>
+                            <span className="right">
+                              <button
+                                className="pf-remove-btn"
+                                onClick={() => removeHolding(holding.sym)}
+                                aria-label={`Remove ${holding.sym}`}
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
+                            </span>
+                          </div>
+                        ))}
                       </div>
 
-                      {activeHoldings.map((holding, index) => (
-                        <div
-                          key={holding.sym}
-                          className="pf-holdings-row"
-                          style={{ animationDelay: `${index * 0.03}s` }}
-                        >
-                          <button
-                            className="pf-stock-cell"
+                      {/* Mobile/Tablet Holdings Card Grid */}
+                      <div className="pf-holdings-mobile-grid">
+                        {activeHoldings.map((holding, index) => (
+                          <div
+                            key={holding.sym}
+                            className="pf-mobile-card"
                             onClick={() => setSelectedSymbol(holding.sym)}
+                            style={{ animationDelay: `${index * 0.03}s` }}
                           >
-                            <StockLogo symbol={holding.sym} companyName={holding.companyName} size={24} />
-                            <div className="pf-stock-cell-meta">
-                              <span className="pf-stock-symbol">
-                                {holding.sym}
-                              </span>
-                              <span className="pf-stock-name">
-                                {holding.companyName}
-                              </span>
+                            <div className="pf-mobile-card-header">
+                              <div className="pf-mobile-card-stock">
+                                <StockLogo symbol={holding.sym} companyName={holding.companyName} size={32} />
+                                <div className="pf-mobile-card-stock-meta">
+                                  <span className="pf-mobile-card-symbol">{holding.sym}</span>
+                                  <span className="pf-mobile-card-name">{holding.companyName}</span>
+                                </div>
+                              </div>
+                              <button
+                                className="pf-mobile-card-remove"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeHolding(holding.sym);
+                                }}
+                                aria-label={`Remove ${holding.sym}`}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              </button>
                             </div>
-                          </button>
-                          <span className="right">
-                            {sharesFormatter.format(holding.quantity)}
-                          </span>
-                          <span className="right">
-                            {currency.format(holding.avgPrice)}
-                          </span>
-                          <span className="right">
-                            {holding.hasLivePrice
-                              ? currency.format(holding.currentPrice)
-                              : "Pending"}
-                          </span>
-                          <span className="right">
-                            {currency.format(holding.invested)}
-                          </span>
-                          <span className="right">
-                            {currency.format(holding.currentValue)}
-                          </span>
-                          <span
-                            className={`right pf-pl ${
-                              holding.gainLoss >= 0 ? "up" : "down"
-                            }`}
-                          >
-                            {currency.format(holding.gainLoss)}
-                            <small>{formatPercent(holding.gainLossPct)}</small>
-                          </span>
-                          <span className="right">
-                            <button
-                              className="pf-remove-btn"
-                              onClick={() => removeHolding(holding.sym)}
-                              aria-label={`Remove ${holding.sym}`}
-                            >
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
 
-                    {/* Mobile/Tablet Holdings Card Grid */}
-                    <div className="pf-holdings-mobile-grid">
-                      {activeHoldings.map((holding, index) => (
-                        <div
-                          key={holding.sym}
-                          className="pf-mobile-card"
-                          onClick={() => setSelectedSymbol(holding.sym)}
-                          style={{ animationDelay: `${index * 0.03}s` }}
-                        >
-                          <div className="pf-mobile-card-header">
-                            <div className="pf-mobile-card-stock">
-                              <StockLogo symbol={holding.sym} companyName={holding.companyName} size={32} />
-                              <div className="pf-mobile-card-stock-meta">
-                                <span className="pf-mobile-card-symbol">{holding.sym}</span>
-                                <span className="pf-mobile-card-name">{holding.companyName}</span>
+                            <div className="pf-mobile-card-divider" />
+
+                            <div className="pf-mobile-card-grid">
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">Qty</span>
+                                <span className="pf-mobile-card-value">{sharesFormatter.format(holding.quantity)}</span>
+                              </div>
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">Avg Cost</span>
+                                <span className="pf-mobile-card-value">{currency.format(holding.avgPrice)}</span>
+                              </div>
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">Current</span>
+                                <span className="pf-mobile-card-value">
+                                  {holding.hasLivePrice ? currency.format(holding.currentPrice) : "Pending"}
+                                </span>
+                              </div>
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">Invested</span>
+                                <span className="pf-mobile-card-value">{currency.format(holding.invested)}</span>
+                              </div>
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">Value</span>
+                                <span className="pf-mobile-card-value">{currency.format(holding.currentValue)}</span>
+                              </div>
+                              <div className="pf-mobile-card-stat">
+                                <span className="pf-mobile-card-label">P/L</span>
+                                <span className={`pf-mobile-card-value pf-pl ${holding.gainLoss >= 0 ? "up" : "down"}`}>
+                                  {currency.format(holding.gainLoss)}
+                                  <small className="pf-mobile-card-pct">{formatPercent(holding.gainLossPct)}</small>
+                                </span>
                               </div>
                             </div>
-                            <button
-                              className="pf-mobile-card-remove"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeHolding(holding.sym);
-                              }}
-                              aria-label={`Remove ${holding.sym}`}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </button>
                           </div>
-
-                          <div className="pf-mobile-card-divider" />
-
-                          <div className="pf-mobile-card-grid">
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">Qty</span>
-                              <span className="pf-mobile-card-value">{sharesFormatter.format(holding.quantity)}</span>
-                            </div>
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">Avg Cost</span>
-                              <span className="pf-mobile-card-value">{currency.format(holding.avgPrice)}</span>
-                            </div>
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">Current</span>
-                              <span className="pf-mobile-card-value">
-                                {holding.hasLivePrice ? currency.format(holding.currentPrice) : "Pending"}
-                              </span>
-                            </div>
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">Invested</span>
-                              <span className="pf-mobile-card-value">{currency.format(holding.invested)}</span>
-                            </div>
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">Value</span>
-                              <span className="pf-mobile-card-value">{currency.format(holding.currentValue)}</span>
-                            </div>
-                            <div className="pf-mobile-card-stat">
-                              <span className="pf-mobile-card-label">P/L</span>
-                              <span className={`pf-mobile-card-value pf-pl ${holding.gainLoss >= 0 ? "up" : "down"}`}>
-                                {currency.format(holding.gainLoss)}
-                                <small className="pf-mobile-card-pct">{formatPercent(holding.gainLossPct)}</small>
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </section>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </section>
+              </div>
 
               <div className="db-sidebar">
                 <section className="db-section u3">
@@ -872,7 +1496,7 @@ export default function PortfolioPage() {
                             <div className="pf-allocation-meta">
                               <span>{holding.sym}</span>
                               <strong>
-                                {compactCurrency.format(holding.currentValue)}
+                                {compactCurrency.format(holding.currentValue)} ({width.toFixed(1)}%)
                               </strong>
                             </div>
                             <div className="pf-allocation-track">
@@ -889,8 +1513,11 @@ export default function PortfolioPage() {
                 </section>
 
                 <section className="db-section u4">
-                  <div className="db-section-header">
-                    <h2 className="db-section-title">Recent Transactions</h2>
+                  <div className="db-section-header" style={{ cursor: "pointer" }} onClick={() => setShowAllTransactions(true)}>
+                    <h2 className="db-section-title" style={{ transition: "color 0.2s" }} onMouseEnter={(e) => e.currentTarget.style.color = "var(--mint)"} onMouseLeave={(e) => e.currentTarget.style.color = "var(--ink-2)"}>
+                      Transactions ↗
+                    </h2>
+                    <span className="pf-panel-note">View all</span>
                   </div>
                   <div className="pf-lots-list">
                     {recentTransactions.length === 0 ? (
@@ -971,6 +1598,18 @@ export default function PortfolioPage() {
         <DetailModal
           symbol={selectedSymbol}
           onClose={() => setSelectedSymbol(null)}
+        />
+      )}
+
+      {showAllTransactions && (
+        <AllTransactionsModal
+          transactions={transactions}
+          onClose={() => setShowAllTransactions(false)}
+          onRemoveTransaction={removeTransaction}
+          performanceData={performanceData}
+          isLoadingPerformance={isLoadingPerformance}
+          totals={totals}
+          activeHoldings={activeHoldings}
         />
       )}
     </>
