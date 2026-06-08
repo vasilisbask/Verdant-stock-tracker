@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { getCachedDetails, setCachedDetails, StockDetailsResponse } from "@/lib/cache";
 
@@ -27,6 +27,7 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
 
   const { data: session, status } = useSession();
   const [activeTab, setActiveTab] = useState<"overview" | "news" | "transactions">("overview");
+  const [activeRange, setActiveRange] = useState<"1D" | "1W" | "1M" | "1Y">("1D");
   const [userTransactions, setUserTransactions] = useState<any[]>([]);
   const [loadingTransactions, setLoadingTransactions] = useState(false);
 
@@ -111,8 +112,30 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
 
   if (!symbol) return null;
 
-  // Chart scaling calculations
-  const history = data?.history || [];
+  const history = useMemo(() => {
+    if (!data?.history) return [];
+    
+    // Handle legacy/fallback array format if any
+    const rawHistory = data.history as unknown;
+    if (Array.isArray(rawHistory)) {
+      const legacyArr = rawHistory as Array<{ date: string; close: number }>;
+      if (legacyArr.length === 0) return [];
+      switch (activeRange) {
+        case "1D":
+          return legacyArr.slice(-2);
+        case "1W":
+          return legacyArr.slice(-5);
+        case "1M":
+          return legacyArr.slice(-21);
+        case "1Y":
+        default:
+          return legacyArr;
+      }
+    }
+    
+    return (data.history[activeRange] || []) as Array<{ date: string; close: number }>;
+  }, [data, activeRange]);
+
   const minPrice = history.length > 0 ? Math.min(...history.map(h => h.close)) : 0;
   const maxPrice = history.length > 0 ? Math.max(...history.map(h => h.close)) : 0;
   const priceRange = maxPrice - minPrice || 1;
@@ -178,10 +201,44 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
     setHoveredPoint(null);
   };
 
-  // Determine standard colors based on price changes
-  const isUp = data?.daily?.changePercent !== undefined && data?.daily?.changePercent !== null
-    ? data.daily.changePercent >= 0
-    : (history.length > 1 ? history[history.length - 1].close >= history[0].close : true);
+  // Derive range performance metrics
+  const rangeMetrics = useMemo(() => {
+    if (activeRange === "1D" && data?.daily?.price !== undefined && data?.daily?.price !== null) {
+      const change = data.daily.change ?? 0;
+      const changePercent = data.daily.changePercent ?? 0;
+      return {
+        price: data.daily.price,
+        change,
+        changePercent,
+        isUp: changePercent >= 0,
+        label: "Today"
+      };
+    }
+
+    if (history.length > 0) {
+      const startPrice = history[0].close;
+      const currentPrice = history[history.length - 1].close;
+      const change = currentPrice - startPrice;
+      const changePercent = startPrice > 0 ? (change / startPrice) * 100 : 0;
+      return {
+        price: currentPrice,
+        change,
+        changePercent,
+        isUp: change >= 0,
+        label: activeRange
+      };
+    }
+
+    return {
+      price: 0,
+      change: 0,
+      changePercent: 0,
+      isUp: true,
+      label: ""
+    };
+  }, [data, history, activeRange]);
+
+  const isUp = rangeMetrics.isUp;
   const priceColorClass = isUp ? "up" : "down";
   const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
 
@@ -258,33 +315,17 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
               </div>
               
               <div className="modal-price-block">
-                {data.daily?.price !== undefined && data.daily?.price !== null ? (
+                {history.length > 0 ? (
                   <>
                     <div className="modal-current-price">
-                      ${data.daily.price.toFixed(2)}
+                      ${rangeMetrics.price.toFixed(2)}
                     </div>
                     <div className={`modal-pct-change ${priceColorClass}`}>
                       {(() => {
-                        const change = data.daily.change ?? 0;
-                        const pct = data.daily.changePercent ?? 0;
+                        const change = rangeMetrics.change;
+                        const pct = rangeMetrics.changePercent;
                         const sign = change >= 0 ? "+" : "";
-                        return `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%) Today`;
-                      })()}
-                    </div>
-                  </>
-                ) : history.length > 0 ? (
-                  <>
-                    <div className="modal-current-price">
-                      ${history[history.length - 1].close.toFixed(2)}
-                    </div>
-                    <div className={`modal-pct-change ${priceColorClass}`}>
-                      {(() => {
-                        const first = history[0].close;
-                        const last = history[history.length - 1].close;
-                        const diff = last - first;
-                        const pct = (diff / first) * 100;
-                        const sign = diff >= 0 ? "+" : "";
-                        return `${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%) 30d`;
+                        return `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%) ${rangeMetrics.label}`;
                       })()}
                     </div>
                   </>
@@ -313,8 +354,43 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
             {activeTab === "overview" && (
               <>
                 <section className="modal-chart-section">
-                  <div className="modal-chart-header">
-                    <span className="modal-chart-label">30-Day Historical Trend</span>
+                  <div className="modal-chart-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                      <span className="modal-chart-label">Trend ({activeRange})</span>
+                      <div style={{ display: "flex", gap: "6px" }}>
+                        {(["1D", "1W", "1M", "1Y"] as const).map((r) => (
+                          <button
+                            key={r}
+                            onClick={() => setActiveRange(r)}
+                            style={{
+                              background: activeRange === r ? "rgba(176, 228, 204, 0.08)" : "none",
+                              border: `1px solid ${activeRange === r ? "var(--mint)" : "rgba(255, 255, 255, 0.06)"}`,
+                              color: activeRange === r ? "var(--mint)" : "var(--ink-3)",
+                              fontSize: "10px",
+                              fontWeight: "bold",
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              cursor: "pointer",
+                              transition: "all 0.2s"
+                            }}
+                            onMouseEnter={(e) => {
+                              if (activeRange !== r) {
+                                e.currentTarget.style.borderColor = "rgba(176, 228, 204, 0.4)";
+                                e.currentTarget.style.color = "var(--ink-2)";
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (activeRange !== r) {
+                                e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.06)";
+                                e.currentTarget.style.color = "var(--ink-3)";
+                              }
+                            }}
+                          >
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                     {hoveredPoint ? (
                       <div className="modal-chart-tooltip">
                         <span className="tooltip-date">{hoveredPoint.date}:</span>

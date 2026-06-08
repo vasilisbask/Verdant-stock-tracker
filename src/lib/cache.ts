@@ -19,10 +19,12 @@ export interface StockDetailsResponse {
     fiftyTwoWeekHigh: string;
     fiftyTwoWeekLow: string;
   };
-  history: Array<{
-    date: string;
-    close: number;
-  }>;
+  history: {
+    "1D": Array<{ date: string; close: number }>;
+    "1W": Array<{ date: string; close: number }>;
+    "1M": Array<{ date: string; close: number }>;
+    "1Y": Array<{ date: string; close: number }>;
+  };
   news?: Array<{
     uuid: string;
     title: string;
