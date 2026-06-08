@@ -114,13 +114,22 @@ export async function GET(req: NextRequest) {
       console.warn(`[Yahoo Finance Details API] Failed to fetch news for ${symbol}:`, (newsErr as Error).message);
     }
 
+    const daily = {
+      price: priceInfo.regularMarketPrice ?? null,
+      change: priceInfo.regularMarketChange ?? null,
+      changePercent: typeof priceInfo.regularMarketChangePercent === "number"
+        ? priceInfo.regularMarketChangePercent * 100
+        : null
+    };
+
     return NextResponse.json({
       success: true,
       symbol,
       summary,
       stats,
       history,
-      news
+      news,
+      daily
     });
 
   } catch (err) {

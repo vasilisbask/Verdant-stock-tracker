@@ -179,7 +179,9 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
   };
 
   // Determine standard colors based on price changes
-  const isUp = history.length > 1 ? history[history.length - 1].close >= history[0].close : true;
+  const isUp = data?.daily?.changePercent !== undefined && data?.daily?.changePercent !== null
+    ? data.daily.changePercent >= 0
+    : (history.length > 1 ? history[history.length - 1].close >= history[0].close : true);
   const priceColorClass = isUp ? "up" : "down";
   const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
 
@@ -256,7 +258,21 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
               </div>
               
               <div className="modal-price-block">
-                {history.length > 0 ? (
+                {data.daily?.price !== undefined && data.daily?.price !== null ? (
+                  <>
+                    <div className="modal-current-price">
+                      ${data.daily.price.toFixed(2)}
+                    </div>
+                    <div className={`modal-pct-change ${priceColorClass}`}>
+                      {(() => {
+                        const change = data.daily.change ?? 0;
+                        const pct = data.daily.changePercent ?? 0;
+                        const sign = change >= 0 ? "+" : "";
+                        return `${sign}${change.toFixed(2)} (${sign}${pct.toFixed(2)}%) Today`;
+                      })()}
+                    </div>
+                  </>
+                ) : history.length > 0 ? (
                   <>
                     <div className="modal-current-price">
                       ${history[history.length - 1].close.toFixed(2)}

@@ -31,6 +31,11 @@ export interface StockDetailsResponse {
     time: string;
     thumbnail: string | null;
   }>;
+  daily?: {
+    price: number | null;
+    change: number | null;
+    changePercent: number | null;
+  };
 }
 
 interface CacheEntry {

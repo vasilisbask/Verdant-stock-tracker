@@ -288,7 +288,7 @@ export default function MarketsPage() {
                       <span className="mk-mover-sym">{q.sym}</span>
                       <span className="mk-mover-name">{getCompanyMeta(q.sym).name || q.sym}</span>
                       <span className="mk-mover-price right">{q.price}</span>
-                      <span className={`mk-mover-pct right up`}>+{q.pct}</span>
+                      <span className={`mk-mover-pct right up`}>{q.pct}</span>
                     </div>
                   ))}
                 </div>
