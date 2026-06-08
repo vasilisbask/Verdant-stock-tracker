@@ -93,12 +93,37 @@ export async function GET(req: NextRequest) {
   const symbolsQuery = searchParams.get("symbols");
   const now = Date.now();
 
-  // Parameterless load fetches Top 50 most active stocks dynamically
+  // Parameterless load fetches Top active, gainers and losers dynamically
   if (!symbolsQuery) {
     try {
-      const activeRes = (await yahooFinance.screener({ scrIds: 'most_actives', count: 50 }, undefined, { validateResult: false })) as any;
-      const rawQuotes = activeRes?.quotes || [];
-      
+      const results = await Promise.allSettled([
+        yahooFinance.screener({ scrIds: 'most_actives', count: 30 }, undefined, { validateResult: false }),
+        yahooFinance.screener({ scrIds: 'day_gainers', count: 20 }, undefined, { validateResult: false }),
+        yahooFinance.screener({ scrIds: 'day_losers', count: 20 }, undefined, { validateResult: false }),
+      ]);
+
+      const quotesMap = new Map<string, any>();
+      let hasData = false;
+
+      results.forEach((result) => {
+        if (result.status === 'fulfilled' && (result.value as any)?.quotes) {
+          const quotes = (result.value as any).quotes;
+          if (quotes.length > 0) {
+            hasData = true;
+          }
+          quotes.forEach((q: any) => {
+            if (q && q.symbol) {
+              quotesMap.set(q.symbol.toUpperCase(), q);
+            }
+          });
+        }
+      });
+
+      if (!hasData) {
+        throw new Error("All screeners returned empty or failed");
+      }
+
+      const rawQuotes = Array.from(quotesMap.values());
       const mapped = rawQuotes.map((q: any) => {
         const mappedQuote = mapYahooQuote(q);
         // Save in quoteCache
@@ -106,14 +131,10 @@ export async function GET(req: NextRequest) {
         return mappedQuote;
       });
 
-      if (mapped.length === 0) {
-        throw new Error("Empty screener quotes list");
-      }
-
       return NextResponse.json({ data: mapped, isMock: false });
 
     } catch (screenerErr) {
-      console.warn("[Yahoo Finance Proxy] Predefined screener 'most_actives' failed:", (screenerErr as Error).message);
+      console.warn("[Yahoo Finance Proxy] Predefined screeners failed:", (screenerErr as Error).message);
       
       // Bulk fetch standard dynamic symbols if the screener endpoint fails
       const fallbackSymbols = ["AAPL", "NVDA", "MSFT", "TSLA", "AMZN", "GOOGL", "META", "JPM", "V", "NFLX"];

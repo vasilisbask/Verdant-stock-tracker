@@ -43,7 +43,7 @@ function pctToTarget(price: string, target: string): { dist: string; above: bool
   const t = parseFloat(target);
   if (isNaN(p) || isNaN(t) || p === 0) return null;
   const diff = ((t - p) / p) * 100;
-  return { dist: Math.abs(diff).toFixed(1), above: diff >= 0 };
+  return { dist: Math.abs(diff).toFixed(1), above: p >= t };
 }
 
 /* Empty state */
@@ -207,7 +207,7 @@ function StockCard({
       {targetInfo && quote && (
         <div className="wl-target-dist">
           <div className={`wl-dist-badge ${targetInfo.above ? "above" : "below"}`}>
-            {targetInfo.above ? "▲" : "▼"} {targetInfo.dist}% {targetInfo.above ? "to target" : "past target"}
+            {targetInfo.above ? "▲" : "▼"} {targetInfo.dist}% {targetInfo.above ? "past target" : "to target"}
           </div>
           <div className="wl-dist-bar-track">
             <div
