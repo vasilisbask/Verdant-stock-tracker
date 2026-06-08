@@ -126,7 +126,7 @@ export async function GET(req: NextRequest) {
           return mappedQuote;
         });
         return NextResponse.json({ data: mapped, isMock: false });
-      } catch (fallbackErr) {
+      } catch (_fallbackErr) {
         return NextResponse.json({
           success: false,
           data: [],

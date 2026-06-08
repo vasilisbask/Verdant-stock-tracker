@@ -8,7 +8,6 @@ import DetailModal from "@/components/layout/DetailModal";
 import Footer from "@/components/layout/Footer";
 import PillHeader from "@/components/layout/PillHeader";
 import StockLogo from "@/components/layout/StockLogo";
-import { getCompanyMeta } from "@/lib/stocks";
 
 interface Quote {
   sym: string;
@@ -206,7 +205,17 @@ interface PerformancePoint {
   value: number;
 }
 
-function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
+function PortfolioPerformanceChart({ 
+  data, 
+  activeRange, 
+  setActiveRange,
+  onOpenTransactions 
+}: { 
+  data: PerformancePoint[]; 
+  activeRange: "1D" | "1W" | "1M" | "1Y";
+  setActiveRange: (r: "1D" | "1W" | "1M" | "1Y") => void;
+  onOpenTransactions?: () => void;
+}) {
   const [hoveredPoint, setHoveredPoint] = useState<any | null>(null);
 
   if (data.length === 0) {
@@ -279,20 +288,99 @@ function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
     setHoveredPoint(closest);
   };
 
+  const isUp = data.length >= 2 ? data[data.length - 1].value >= data[0].value : true;
+  const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
+  const valueColor = isUp ? "var(--mint)" : "#f26d6d";
+
   return (
     <div className="portfolio-performance-card" style={{ position: "relative", width: "100%" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "12px" }}>
-        <h2 className="db-section-title" style={{ margin: 0 }}>PORTFOLIO VALUE (30D)</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <button
+            onClick={onOpenTransactions}
+            style={{
+              background: "none",
+              border: "none",
+              padding: 0,
+              margin: 0,
+              cursor: onOpenTransactions ? "pointer" : "default",
+              textAlign: "left",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px"
+            }}
+            className="pf-value-title-btn"
+            onMouseEnter={(e) => {
+              if (onOpenTransactions) {
+                const h2 = e.currentTarget.querySelector("h2");
+                if (h2) h2.style.color = "var(--mint)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (onOpenTransactions) {
+                const h2 = e.currentTarget.querySelector("h2");
+                if (h2) h2.style.color = "";
+              }
+            }}
+          >
+            <h2 
+              className="db-section-title" 
+              style={{ 
+                margin: 0,
+                transition: "color 0.2s"
+              }}
+            >
+              PORTFOLIO VALUE
+            </h2>
+            {onOpenTransactions && (
+              <span style={{ fontSize: "12px", color: "var(--ink-3)" }}>↗</span>
+            )}
+          </button>
+          
+          <div style={{ display: "flex", gap: "6px" }}>
+            {(["1D", "1W", "1M", "1Y"] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setActiveRange(r)}
+                style={{
+                  background: activeRange === r ? "rgba(176, 228, 204, 0.08)" : "none",
+                  border: `1px solid ${activeRange === r ? "var(--mint)" : "rgba(255, 255, 255, 0.06)"}`,
+                  color: activeRange === r ? "var(--mint)" : "var(--ink-3)",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                  padding: "3px 8px",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  transition: "all 0.2s"
+                }}
+                onMouseEnter={(e) => {
+                  if (activeRange !== r) {
+                    e.currentTarget.style.borderColor = "rgba(176, 228, 204, 0.4)";
+                    e.currentTarget.style.color = "var(--ink-2)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (activeRange !== r) {
+                    e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.06)";
+                    e.currentTarget.style.color = "var(--ink-3)";
+                  }
+                }}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+        </div>
         <span style={{ fontFamily: "var(--f-mono)", fontSize: "0.85rem", color: "var(--ink-2)" }}>
           {hoveredPoint ? (
             <>
               <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>{hoveredPoint.date}:</span>
-              <strong style={{ color: "var(--mint)" }}>${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong style={{ color: valueColor }}>${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </>
           ) : (
             <>
               <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>Current:</span>
-              <strong style={{ color: "var(--ink)" }}>${data[data.length - 1].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong style={{ color: valueColor }}>${data[data.length - 1].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </>
           )}
         </span>
@@ -308,8 +396,8 @@ function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
       >
         <defs>
           <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--mint)" stopOpacity="0.22" />
-            <stop offset="100%" stopColor="var(--mint)" stopOpacity="0.0" />
+            <stop offset="0%" stopColor={strokeColor} stopOpacity="0.22" />
+            <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
           </linearGradient>
         </defs>
 
@@ -343,7 +431,7 @@ function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
           <path 
             d={linePath} 
             fill="none" 
-            stroke="var(--mint)" 
+            stroke={strokeColor} 
             strokeWidth="1.5" 
             strokeLinecap="round" 
             strokeLinejoin="round" 
@@ -366,7 +454,7 @@ function PortfolioPerformanceChart({ data }: { data: PerformancePoint[] }) {
               cy={hoveredPoint.y} 
               r="4.5" 
               fill="var(--bg-card)" 
-              stroke="var(--mint)" 
+              stroke={strokeColor} 
               strokeWidth="1.5" 
             />
           </g>
@@ -409,7 +497,6 @@ function PerformanceChartSkeleton() {
 function AllTransactionsModal({
   transactions,
   onClose,
-  onRemoveTransaction,
   performanceData,
   isLoadingPerformance,
   totals,
@@ -417,8 +504,7 @@ function AllTransactionsModal({
 }: {
   transactions: PortfolioTransaction[];
   onClose: () => void;
-  onRemoveTransaction: (id: string) => Promise<void>;
-  performanceData: PerformancePoint[];
+  performanceData: any;
   isLoadingPerformance: boolean;
   totals: {
     invested: number;
@@ -438,6 +524,27 @@ function AllTransactionsModal({
     date: string;
   } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+  
+  const [activeRange, setActiveRange] = useState<"1D" | "1W" | "1M" | "1Y">("1D");
+
+  const history = useMemo(() => {
+    if (!performanceData) return [];
+    
+    // Handle legacy/fallback array format if any
+    const rawHistory = performanceData as unknown;
+    if (Array.isArray(rawHistory)) {
+      if (rawHistory.length === 0) return [];
+      switch (activeRange) {
+        case "1D": return rawHistory.slice(-2);
+        case "1W": return rawHistory.slice(-5);
+        case "1M": return rawHistory.slice(-21);
+        case "1Y":
+        default: return rawHistory;
+      }
+    }
+    
+    return (performanceData[activeRange] || []) as PerformancePoint[];
+  }, [performanceData, activeRange]);
 
   // Close on ESC
   useEffect(() => {
@@ -453,7 +560,7 @@ function AllTransactionsModal({
   const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
 
   // Chart calculations
-  const values = performanceData.map((d) => d.value);
+  const values = history.map((d) => d.value);
   const maxVal = values.length > 0 ? Math.max(...values) : 0;
   const minVal = values.length > 0 ? Math.min(...values) : 0;
   const range = maxVal - minVal;
@@ -469,8 +576,8 @@ function AllTransactionsModal({
   const chartWidth = svgWidth - paddingX * 2;
   const chartHeight = svgHeight - paddingY * 2;
 
-  const points = performanceData.map((d, index) => {
-    const x = paddingX + (index / (performanceData.length - 1)) * chartWidth;
+  const points = history.map((d, index) => {
+    const x = paddingX + (index / (history.length - 1)) * chartWidth;
     const y = svgHeight - paddingY - ((d.value - chartMin) / priceRange) * chartHeight;
     return { x, y, value: d.value, date: d.date };
   });
@@ -568,8 +675,43 @@ function AllTransactionsModal({
           {activeTab === "overview" && (
             <>
               <section className="modal-chart-section">
-                <div className="modal-chart-header">
-                  <span className="modal-chart-label">30-Day Value Trend</span>
+                <div className="modal-chart-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                    <span className="modal-chart-label">Value Trend</span>
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      {(["1D", "1W", "1M", "1Y"] as const).map((r) => (
+                        <button
+                          key={r}
+                          onClick={() => setActiveRange(r)}
+                          style={{
+                            background: activeRange === r ? "rgba(176, 228, 204, 0.08)" : "none",
+                            border: `1px solid ${activeRange === r ? "var(--mint)" : "rgba(255, 255, 255, 0.06)"}`,
+                            color: activeRange === r ? "var(--mint)" : "var(--ink-3)",
+                            fontSize: "10px",
+                            fontWeight: "bold",
+                            padding: "3px 8px",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                            transition: "all 0.2s"
+                          }}
+                          onMouseEnter={(e) => {
+                            if (activeRange !== r) {
+                              e.currentTarget.style.borderColor = "rgba(176, 228, 204, 0.4)";
+                              e.currentTarget.style.color = "var(--ink-2)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (activeRange !== r) {
+                              e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.06)";
+                              e.currentTarget.style.color = "var(--ink-3)";
+                            }
+                          }}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {hoveredPoint ? (
                     <div className="modal-chart-tooltip">
                       <span className="tooltip-date">{hoveredPoint.date}:</span>
@@ -584,7 +726,7 @@ function AllTransactionsModal({
                   <div style={{ height: "220px", display: "flex", alignItems: "center", justifyContent: "center" }}>
                     <span className="skeleton-cell pulse" style={{ width: "80px", height: "16px", borderRadius: "2px" }} />
                   </div>
-                ) : performanceData.length > 1 ? (
+                ) : history.length > 1 ? (
                   <svg
                     ref={svgRef}
                     viewBox={`0 0 ${svgWidth} ${svgHeight}`}
@@ -656,7 +798,7 @@ function AllTransactionsModal({
                       y={svgHeight - 8}
                       className="modal-chart-axis-text"
                     >
-                      {performanceData[0].date}
+                      {history[0]?.date || ""}
                     </text>
                     <text
                       x={svgWidth - paddingX}
@@ -664,7 +806,7 @@ function AllTransactionsModal({
                       className="modal-chart-axis-text"
                       textAnchor="end"
                     >
-                      {performanceData[performanceData.length - 1].date}
+                      {history[history.length - 1]?.date || ""}
                     </text>
                   </svg>
                 ) : (
@@ -783,9 +925,28 @@ export default function PortfolioPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
 
-  const [performanceData, setPerformanceData] = useState<PerformancePoint[]>([]);
+  const [performanceData, setPerformanceData] = useState<any>(null);
   const [isLoadingPerformance, setIsLoadingPerformance] = useState(true);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [activeRange, setActiveRange] = useState<"1D" | "1W" | "1M" | "1Y">("1D");
+
+  const activePerformancePoints = useMemo(() => {
+    if (!performanceData) return [];
+    
+    // Support both the new object format and any legacy array format
+    if (Array.isArray(performanceData)) {
+      if (performanceData.length === 0) return [];
+      switch (activeRange) {
+        case "1D": return performanceData.slice(-2);
+        case "1W": return performanceData.slice(-5);
+        case "1M": return performanceData.slice(-21);
+        case "1Y":
+        default: return performanceData;
+      }
+    }
+    
+    return performanceData[activeRange] || [];
+  }, [performanceData, activeRange]);
 
   const [symbol, setSymbol] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -819,7 +980,7 @@ export default function PortfolioPage() {
       const res = await fetch("/api/portfolio/performance");
       if (res.ok) {
         const json = await res.json();
-        setPerformanceData(json.data || []);
+        setPerformanceData(json.data || null);
       }
     } catch (err) {
       console.error("Failed to load portfolio performance:", err);
@@ -1007,10 +1168,6 @@ export default function PortfolioPage() {
     };
   }, [holdings, activeHoldings]);
 
-  const bestHolding = activeHoldings.reduce<Holding | null>((best, item) => {
-    if (!best) return item;
-    return item.gainLossPct > best.gainLossPct ? item : best;
-  }, null);
 
   const recentTransactions = transactions.slice(0, 5);
   const firstName = session?.user?.name?.split(" ")[0] ?? "Trader";
@@ -1110,23 +1267,6 @@ export default function PortfolioPage() {
       await loadPortfolio();
     } catch {
       setFormError(`Could not remove ${sym}.`);
-    }
-  }
-
-  async function removeTransaction(id: string) {
-    if (!confirm("Are you sure you want to delete this transaction?")) return;
-    try {
-      const res = await fetch(`/api/portfolio?transactionId=${id}`, {
-        method: "DELETE",
-      });
-
-      if (!res.ok) {
-        throw new Error("Could not remove transaction");
-      }
-
-      await loadPortfolio();
-    } catch {
-      setFormError("Could not remove transaction.");
     }
   }
 
@@ -1305,7 +1445,12 @@ export default function PortfolioPage() {
                   {isLoadingPerformance ? (
                     <PerformanceChartSkeleton />
                   ) : (
-                    <PortfolioPerformanceChart data={performanceData} />
+                    <PortfolioPerformanceChart 
+                      data={activePerformancePoints} 
+                      activeRange={activeRange}
+                      setActiveRange={setActiveRange}
+                      onOpenTransactions={() => setShowAllTransactions(true)}
+                    />
                   )}
                 </section>
 
@@ -1605,7 +1750,6 @@ export default function PortfolioPage() {
         <AllTransactionsModal
           transactions={transactions}
           onClose={() => setShowAllTransactions(false)}
-          onRemoveTransaction={removeTransaction}
           performanceData={performanceData}
           isLoadingPerformance={isLoadingPerformance}
           totals={totals}

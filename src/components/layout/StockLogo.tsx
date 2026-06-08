@@ -42,10 +42,8 @@ export default function StockLogo({ symbol, size = 20, className = "" }: StockLo
     try {
       const cached = localStorage.getItem(`${CACHE_NS}_${cleanSym}`);
       if (cached && cached !== "fallback") {
-        if (logoUrl !== cached) {
-          setLogoUrl(cached);
-          setError(false);
-        }
+        setLogoUrl(prev => (prev !== cached ? cached : prev));
+        setError(false);
         return;
       }
       if (cached === "fallback") {

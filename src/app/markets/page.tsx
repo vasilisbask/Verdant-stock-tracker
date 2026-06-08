@@ -32,10 +32,6 @@ function getETDate(): Date {
   return new Date(tzString);
 }
 
-function getETHour(): number {
-  const et = getETDate();
-  return et.getHours() + et.getMinutes() / 60;
-}
 
 function isMarketOpen(): boolean {
   const et = getETDate();

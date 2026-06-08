@@ -25,7 +25,7 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
 
   const svgRef = useRef<SVGSVGElement>(null);
 
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const [activeTab, setActiveTab] = useState<"overview" | "news" | "transactions">("overview");
   const [activeRange, setActiveRange] = useState<"1D" | "1W" | "1M" | "1Y">("1D");
   const [userTransactions, setUserTransactions] = useState<any[]>([]);
@@ -86,7 +86,7 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
             setError("Service temporarily unavailable.");
           }
         }
-      } catch (err) {
+      } catch (_err) {
         if (active) {
           setError("Network error fetching stock details.");
         }
@@ -109,8 +109,6 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
-
-  if (!symbol) return null;
 
   const history = useMemo(() => {
     if (!data?.history) return [];
@@ -241,6 +239,8 @@ export default function DetailModal({ symbol, onClose }: DetailModalProps) {
   const isUp = rangeMetrics.isUp;
   const priceColorClass = isUp ? "up" : "down";
   const strokeColor = isUp ? "var(--mint)" : "#f26d6d";
+
+  if (!symbol) return null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>

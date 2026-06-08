@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import PillHeader from "@/components/layout/PillHeader";
 import Footer from "@/components/layout/Footer";
-import { getCompanyMeta } from "@/lib/stocks";
 import DetailModal from "@/components/layout/DetailModal";
 import StockLogo from "@/components/layout/StockLogo";
 
@@ -265,7 +264,7 @@ export default function WatchlistPage() {
   const [isAdding, setIsAdding]   = useState(false);
   const addRef                    = useRef<HTMLInputElement>(null);
 
-  const { data: session, status } = useSession();
+  const { status } = useSession();
 
 
   /* Load watchlist on mount or session change */
@@ -293,18 +292,19 @@ export default function WatchlistPage() {
     }
   }, [status]);
 
+  const watchlistSymbols = useMemo(() => watchlist.map(w => w.sym).join(","), [watchlist]);
+
   /* Fetch quotes for all watched symbols */
   useEffect(() => {
     let active = true;
 
     async function fetchQuotes() {
-      if (watchlist.length === 0) {
+      if (!watchlistSymbols) {
         setIsLoading(false);
         return;
       }
       try {
-        const symList = watchlist.map(w => w.sym).join(",");
-        const res = await fetch(`/api/stocks/quotes?symbols=${symList}`);
+        const res = await fetch(`/api/stocks/quotes?symbols=${watchlistSymbols}`);
         if (!active) return;
         if (res.ok) {
           const json = await res.json();
@@ -344,7 +344,7 @@ export default function WatchlistPage() {
     fetchQuotes();
     const iv = setInterval(fetchQuotes, 15000);
     return () => { active = false; clearInterval(iv); };
-  }, [watchlist.length]);
+  }, [watchlistSymbols]);
 
   /* Add ticker */
   async function addTicker(sym: string) {

@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Ticker symbol does not exist" }, { status: 400 });
       }
       companyName = quote.longName || quote.shortName || quote.displayName || companyName;
-    } catch (err) {
+    } catch (_err) {
       return NextResponse.json({ error: "Ticker symbol does not exist" }, { status: 400 });
     }
 
