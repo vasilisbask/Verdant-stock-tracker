@@ -65,7 +65,7 @@ function Hero({
   errorMessage: string;
   onSelectSymbol: (sym: string) => void;
 }) {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [dateStr, setDateStr] = useState("27 May 2026 · 14:32 ET");
   useEffect(() => {
     const d = new Date();
@@ -96,7 +96,11 @@ function Hero({
         </p>
 
         <div className="hero-actions u3">
-          {session ? (
+          {status === "loading" ? (
+            <div style={{ display: "flex", alignItems: "center" }}>
+              <span className="skeleton-cell pulse" style={{ width: "160px", height: "46px", borderRadius: "100px" }} />
+            </div>
+          ) : session ? (
             <a href="/watchlist" className="btn-primary btn-lg">
               Go to Watchlist →
             </a>

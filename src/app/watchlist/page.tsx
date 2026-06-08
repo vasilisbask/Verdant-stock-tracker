@@ -222,11 +222,40 @@ function StockCard({
   );
 }
 
+function WatchlistSkeleton() {
+  return (
+    <div className="wl-grid u2">
+      {Array.from({ length: 3 }).map((_, i) => (
+        <div key={i} className="wl-card" style={{ opacity: 0.3, pointerEvents: "none" }}>
+          <div className="wl-card-top" style={{ marginBottom: "20px" }}>
+            <div>
+              <span className="skeleton-cell pulse" style={{ width: "60px", height: "16px", marginBottom: "6px", borderRadius: "2px" }} />
+              <span className="skeleton-cell pulse" style={{ width: "120px", height: "11px", borderRadius: "2px" }} />
+            </div>
+          </div>
+          <div className="wl-price-block" style={{ marginBottom: "20px", paddingBottom: "20px" }}>
+            <span className="skeleton-cell pulse" style={{ width: "100px", height: "32px", marginBottom: "8px", borderRadius: "2px" }} />
+            <span className="skeleton-cell pulse" style={{ width: "60px", height: "13px", borderRadius: "2px" }} />
+          </div>
+          <div className="wl-target-row" style={{ marginBottom: "12px" }}>
+            <span className="skeleton-cell pulse" style={{ width: "80px", height: "13px", borderRadius: "2px" }} />
+            <span className="skeleton-cell pulse" style={{ width: "40px", height: "13px", borderRadius: "2px" }} />
+          </div>
+          <div className="wl-dist-bar-track" style={{ height: "4px" }}>
+            <div className="skeleton-cell pulse" style={{ width: "100%", height: "100%" }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* Main page */
 export default function WatchlistPage() {
   const [watchlist, setWatchlist] = useState<WatchItem[]>([]);
   const [quotes, setQuotes]       = useState<Record<string, Quote>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [isWatchlistLoaded, setIsWatchlistLoaded] = useState(false);
   const [isError, setIsError]     = useState(false);
   const [selectedSymbol, setSelectedSymbol] = useState<string | null>(null);
   const [alertSymbol, setAlertSymbol] = useState<string | null>(null);
@@ -253,11 +282,14 @@ export default function WatchlistPage() {
           }
         } catch (err) {
           console.error("Failed to load DB watchlist:", err);
+        } finally {
+          setIsWatchlistLoaded(true);
         }
       }
       loadDbWatchlist();
     } else {
       setWatchlist(loadWatchlist());
+      setIsWatchlistLoaded(true);
     }
   }, [status]);
 
@@ -456,7 +488,9 @@ export default function WatchlistPage() {
         </div>
 
         {/* Cards grid or empty state */}
-        {!hasItems ? (
+        {(!isWatchlistLoaded || isLoading) ? (
+          <WatchlistSkeleton />
+        ) : !hasItems ? (
           <EmptyState onExampleAdd={sym => addTicker(sym)} />
         ) : (
           <div className="wl-grid u2">

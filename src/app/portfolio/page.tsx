@@ -539,7 +539,19 @@ export default function PortfolioPage() {
           </div>
         </header>
 
-        {!isAuthenticated ? (
+        {status === "loading" ? (
+          <section className="db-section pf-auth-card u1" style={{ borderTopColor: "var(--rule-light)", opacity: 0.7 }}>
+            <div className="pf-loading" style={{ padding: 0 }}>
+              <span className="skeleton-cell pulse" style={{ width: "120px", height: "14px", marginBottom: "16px", borderRadius: "4px" }} />
+              <span className="skeleton-cell pulse" style={{ width: "280px", height: "32px", marginBottom: "20px", borderRadius: "4px" }} />
+              <span className="skeleton-cell pulse" style={{ width: "100%", height: "80px", marginBottom: "24px", borderRadius: "4px" }} />
+              <div style={{ display: "flex", gap: "12px" }}>
+                <span className="skeleton-cell pulse" style={{ width: "100px", height: "40px", borderRadius: "100px" }} />
+                <span className="skeleton-cell pulse" style={{ width: "120px", height: "40px", borderRadius: "100px" }} />
+              </div>
+            </div>
+          </section>
+        ) : !isAuthenticated ? (
           <section className="db-section pf-auth-card u1">
             <span className="pf-auth-kicker">Portfolio access</span>
             <h2 className="pf-auth-title">Sign in to track your holdings</h2>

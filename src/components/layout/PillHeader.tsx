@@ -5,7 +5,7 @@ import { useSession, signOut } from "next-auth/react";
 
 export default function PillHeader() {
   const [scrolled, setScrolled] = useState(false);
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -110,15 +110,29 @@ export default function PillHeader() {
 
           {/* Navigation */}
           <nav className="nav-links" style={{ display: "flex", alignItems: "center" }}>
-            {links.map(link => (
-              <a key={link.href} href={link.href} className="nav-link">
-                {link.label}
-              </a>
-            ))}
+            {status === "loading" ? (
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "6px 14px" }}>
+                <span className="skeleton-cell pulse" style={{ width: "55px", height: "14px", borderRadius: "4px" }} />
+                <span className="skeleton-cell pulse" style={{ width: "55px", height: "14px", borderRadius: "4px" }} />
+                <span className="skeleton-cell pulse" style={{ width: "55px", height: "14px", borderRadius: "4px" }} />
+                <span className="skeleton-cell pulse" style={{ width: "55px", height: "14px", borderRadius: "4px" }} />
+              </div>
+            ) : (
+              links.map(link => (
+                <a key={link.href} href={link.href} className="nav-link">
+                  {link.label}
+                </a>
+              ))
+            )}
 
             <span className="nav-divider" />
 
-            {session ? (
+            {status === "loading" ? (
+              <div style={{ display: "flex", gap: "8px", alignItems: "center", paddingLeft: "10px", paddingRight: "6px" }}>
+                <span className="skeleton-cell pulse" style={{ width: "50px", height: "28px", borderRadius: "100px" }} />
+                <span className="skeleton-cell pulse" style={{ width: "100px", height: "28px", borderRadius: "100px" }} />
+              </div>
+            ) : session ? (
               <>
                 {/* Notification Bell Icon */}
                 <div ref={dropdownRef} className="bell-container" style={{ position: "relative", marginRight: "12px", display: "flex", alignItems: "center" }}>
