@@ -2,17 +2,48 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useSession, signOut } from "next-auth/react";
+import { usePathname } from "next/navigation";
 
 export default function PillHeader() {
   const [scrolled, setScrolled] = useState(false);
+  const pathname = usePathname();
   const { data: session, status } = useSession();
 
   const [unreadCount, setUnreadCount] = useState(0);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [toast, setToast] = useState<{ id: string; title: string; message: string } | null>(null);
+  const [amountsBlurred, setAmountsBlurred] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const isBlurred = localStorage.getItem("amounts_blurred") === "true";
+    setAmountsBlurred(isBlurred);
+    if (isBlurred) {
+      document.documentElement.classList.add("amounts-blurred");
+      document.body.classList.add("amounts-blurred");
+    } else {
+      document.documentElement.classList.remove("amounts-blurred");
+      document.body.classList.remove("amounts-blurred");
+    }
+  }, []);
+
+  const toggleAmountsVisibility = () => {
+    const newVal = !amountsBlurred;
+    console.log("[PillHeader] toggleAmountsVisibility clicked. newVal:", newVal);
+    setAmountsBlurred(newVal);
+    localStorage.setItem("amounts_blurred", String(newVal));
+    if (newVal) {
+      document.documentElement.classList.add("amounts-blurred");
+      document.body.classList.add("amounts-blurred");
+    } else {
+      document.documentElement.classList.remove("amounts-blurred");
+      document.body.classList.remove("amounts-blurred");
+    }
+    console.log("[PillHeader] Dispatching amounts-visibility-change event.");
+    window.dispatchEvent(new Event("amounts-visibility-change"));
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -21,6 +52,7 @@ export default function PillHeader() {
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
 
   // Poll notifications
   useEffect(() => {
@@ -134,6 +166,29 @@ export default function PillHeader() {
               </div>
             ) : session ? (
               <>
+                {/* Visibility Toggle Button */}
+                {pathname === "/portfolio" && (
+                  <button
+                    onClick={toggleAmountsVisibility}
+                    className={`visibility-toggle-btn ${amountsBlurred ? "blurred" : ""}`}
+                    aria-label={amountsBlurred ? "Εμφάνιση ποσών" : "Απόκρυψη ποσών"}
+                  >
+                    {amountsBlurred ? (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
+                        <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
+                        <path d="M6.61 6.61A13.52 13.52 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
+                        <line x1="2" y1="2" x2="22" y2="22" />
+                      </svg>
+                    ) : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                )}
+
                 {/* Notification Bell Icon */}
                 <div ref={dropdownRef} className="bell-container" style={{ position: "relative", marginRight: "12px", display: "flex", alignItems: "center" }}>
                   <button 

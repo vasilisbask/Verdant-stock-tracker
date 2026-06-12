@@ -106,7 +106,7 @@ function StatCard({
         />
       ) : (
         <span
-          className={`db-stat-value ${
+          className={`db-stat-value blur-amount ${
             up === true ? "up" : up === false ? "down" : ""
           }`}
         >
@@ -375,12 +375,12 @@ function PortfolioPerformanceChart({
           {hoveredPoint ? (
             <>
               <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>{hoveredPoint.date}:</span>
-              <strong style={{ color: valueColor }}>${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong className="blur-amount" style={{ color: valueColor }}>${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </>
           ) : (
             <>
               <span style={{ color: "var(--ink-3)", marginRight: "8px" }}>Current:</span>
-              <strong style={{ color: valueColor }}>${data[data.length - 1].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              <strong className="blur-amount" style={{ color: valueColor }}>${data[data.length - 1].value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
             </>
           )}
         </span>
@@ -417,6 +417,7 @@ function PortfolioPerformanceChart({
               y={line.y + 3} 
               textAnchor="end" 
               fill="var(--ink-3)" 
+              className="blur-amount"
               style={{ fontFamily: "var(--f-mono)", fontSize: "9px" }}
             >
               ${line.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -715,7 +716,7 @@ function AllTransactionsModal({
                   {hoveredPoint ? (
                     <div className="modal-chart-tooltip">
                       <span className="tooltip-date">{hoveredPoint.date}:</span>
-                      <span className="tooltip-price">${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      <span className="tooltip-price blur-amount">${hoveredPoint.value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     </div>
                   ) : (
                     <span className="modal-chart-instructions">Hover chart to explore valuation</span>
@@ -758,7 +759,7 @@ function AllTransactionsModal({
                           <text
                             x={paddingX - 8}
                             y={y + 4}
-                            className="modal-chart-axis-text"
+                            className="modal-chart-axis-text blur-amount"
                             textAnchor="end"
                           >
                             ${val.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -819,8 +820,8 @@ function AllTransactionsModal({
                 <h4 className="modal-section-subtitle">Portfolio Summary</h4>
                 <p className="modal-desc-text">
                   Your investment portfolio consists of {activeHoldings.length} active positions. 
-                  The total invested capital is {currency.format(totals.invested)}, which currently holds a market valuation of {currency.format(totals.currentValue)}. 
-                  Your net performance stands at an unrealized profit/loss of {currency.format(totals.gainLoss)} ({totals.gainLossPct >= 0 ? "+" : ""}{totals.gainLossPct.toFixed(2)}%), 
+                  The total invested capital is <span className="blur-amount">{currency.format(totals.invested)}</span>, which currently holds a market valuation of <span className="blur-amount">{currency.format(totals.currentValue)}</span>. 
+                  Your net performance stands at an unrealized profit/loss of <span className="blur-amount">{currency.format(totals.gainLoss)} ({totals.gainLossPct >= 0 ? "+" : ""}{totals.gainLossPct.toFixed(2)}%)</span>, 
                   with a total of {transactions.length} transactions recorded since inception.
                 </p>
               </section>
@@ -839,7 +840,7 @@ function AllTransactionsModal({
                   ].map(item => (
                     <div key={item.label} className="modal-stat-card">
                       <span className="modal-stat-label">{item.label}</span>
-                      <span className="modal-stat-value">{item.value}</span>
+                      <span className={`modal-stat-value ${item.label !== "Active Holdings" && item.label !== "Total Transactions" ? "blur-amount" : ""}`}>{item.value}</span>
                     </div>
                   ))}
                 </div>
@@ -895,9 +896,9 @@ function AllTransactionsModal({
                             </td>
                             <td className="modal-tx-td highlight">{new Date(tx.transactionDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</td>
                             <td className="modal-tx-td highlight-bold">{tx.sym}</td>
-                            <td className="modal-tx-td highlight-bold right">{qty}</td>
-                            <td className="modal-tx-td right">${prc.toFixed(2)}</td>
-                            <td className="modal-tx-td mint-bold right">${total.toFixed(2)}</td>
+                            <td className="modal-tx-td highlight-bold right blur-amount">{qty}</td>
+                            <td className="modal-tx-td right blur-amount">${prc.toFixed(2)}</td>
+                            <td className="modal-tx-td mint-bold right blur-amount">${total.toFixed(2)}</td>
                           </tr>
                         );
                       })}
@@ -915,6 +916,24 @@ function AllTransactionsModal({
 
 export default function PortfolioPage() {
   const { data: session, status } = useSession();
+  const [amountsBlurred, setAmountsBlurred] = useState(false);
+
+  useEffect(() => {
+    const initialVal = localStorage.getItem("amounts_blurred") === "true";
+    console.log("[Portfolio] Initialized amountsBlurred state. value:", initialVal);
+    setAmountsBlurred(initialVal);
+
+    const handleVisibilityChange = () => {
+      const newVal = localStorage.getItem("amounts_blurred") === "true";
+      console.log("[Portfolio] handleVisibilityChange triggered. newVal:", newVal);
+      setAmountsBlurred(newVal);
+    };
+
+    window.addEventListener("amounts-visibility-change", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("amounts-visibility-change", handleVisibilityChange);
+    };
+  }, []);
 
   const [transactions, setTransactions] = useState<PortfolioTransaction[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
@@ -1271,7 +1290,17 @@ export default function PortfolioPage() {
   }
 
   return (
-    <>
+    <div className={amountsBlurred ? "amounts-blurred" : ""}>
+      {amountsBlurred && (
+        <style dangerouslySetInnerHTML={{ __html: `
+          .blur-amount {
+            filter: blur(6px) !important;
+            user-select: none !important;
+            pointer-events: none !important;
+            transition: filter 0.15s ease-out;
+          }
+        `}} />
+      )}
       <PillHeader />
 
       <main className="db-page pf-page">
@@ -1510,25 +1539,25 @@ export default function PortfolioPage() {
                                 </span>
                               </div>
                             </button>
-                            <span className="right">
+                            <span className="right blur-amount">
                               {sharesFormatter.format(holding.quantity)}
                             </span>
-                            <span className="right">
+                            <span className="right blur-amount">
                               {currency.format(holding.avgPrice)}
                             </span>
-                            <span className="right">
+                            <span className="right blur-amount">
                               {holding.hasLivePrice
                                 ? currency.format(holding.currentPrice)
                                 : "Pending"}
                             </span>
-                            <span className="right">
+                            <span className="right blur-amount">
                               {currency.format(holding.invested)}
                             </span>
-                            <span className="right">
+                            <span className="right blur-amount">
                               {currency.format(holding.currentValue)}
                             </span>
                             <span
-                              className={`right pf-pl ${
+                              className={`right pf-pl blur-amount ${
                                 holding.gainLoss >= 0 ? "up" : "down"
                               }`}
                             >
@@ -1586,29 +1615,29 @@ export default function PortfolioPage() {
                             <div className="pf-mobile-card-grid">
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">Qty</span>
-                                <span className="pf-mobile-card-value">{sharesFormatter.format(holding.quantity)}</span>
+                                <span className="pf-mobile-card-value blur-amount">{sharesFormatter.format(holding.quantity)}</span>
                               </div>
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">Avg Cost</span>
-                                <span className="pf-mobile-card-value">{currency.format(holding.avgPrice)}</span>
+                                <span className="pf-mobile-card-value blur-amount">{currency.format(holding.avgPrice)}</span>
                               </div>
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">Current</span>
-                                <span className="pf-mobile-card-value">
+                                <span className="pf-mobile-card-value blur-amount">
                                   {holding.hasLivePrice ? currency.format(holding.currentPrice) : "Pending"}
                                 </span>
                               </div>
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">Invested</span>
-                                <span className="pf-mobile-card-value">{currency.format(holding.invested)}</span>
+                                <span className="pf-mobile-card-value blur-amount">{currency.format(holding.invested)}</span>
                               </div>
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">Value</span>
-                                <span className="pf-mobile-card-value">{currency.format(holding.currentValue)}</span>
+                                <span className="pf-mobile-card-value blur-amount">{currency.format(holding.currentValue)}</span>
                               </div>
                               <div className="pf-mobile-card-stat">
                                 <span className="pf-mobile-card-label">P/L</span>
-                                <span className={`pf-mobile-card-value pf-pl ${holding.gainLoss >= 0 ? "up" : "down"}`}>
+                                <span className={`pf-mobile-card-value pf-pl blur-amount ${holding.gainLoss >= 0 ? "up" : "down"}`}>
                                   {currency.format(holding.gainLoss)}
                                   <small className="pf-mobile-card-pct">{formatPercent(holding.gainLossPct)}</small>
                                 </span>
@@ -1640,7 +1669,7 @@ export default function PortfolioPage() {
                           <div key={holding.sym} className="pf-allocation-row">
                             <div className="pf-allocation-meta">
                               <span>{holding.sym}</span>
-                              <strong>
+                              <strong className="blur-amount">
                                 {compactCurrency.format(holding.currentValue)} ({width.toFixed(1)}%)
                               </strong>
                             </div>
@@ -1695,8 +1724,8 @@ export default function PortfolioPage() {
                             </div>
                           </div>
                           <div className="pf-lot-values">
-                            <span>{sharesFormatter.format(Number(tx.quantity))}</span>
-                            <strong>{currency.format(Number(tx.price))}</strong>
+                            <span className="blur-amount">{sharesFormatter.format(Number(tx.quantity))}</span>
+                            <strong className="blur-amount">{currency.format(Number(tx.price))}</strong>
                           </div>
                         </div>
                       ))
@@ -1756,6 +1785,6 @@ export default function PortfolioPage() {
           activeHoldings={activeHoldings}
         />
       )}
-    </>
+    </div>
   );
 }
