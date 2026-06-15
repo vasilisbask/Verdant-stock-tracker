@@ -66,7 +66,7 @@ function Hero({
   onSelectSymbol: (sym: string) => void;
 }) {
   const { data: session, status } = useSession();
-  const [dateStr, setDateStr] = useState("27 May 2026 · 14:32 ET");
+  const [dateStr, setDateStr] = useState("");
   useEffect(() => {
     const d = new Date();
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -118,7 +118,7 @@ function Hero({
         <div className="trust-row u4">
           {[
             { n: "10+", l: "markets covered" },
-            { n: "< 60s", l: "quote latency" },
+            { n: "Real-time", l: "market data" },
             { n: "∞", l: "watchlist capacity" },
           ].map(s => (
             <div key={s.l}>
@@ -141,7 +141,9 @@ function Hero({
             </span>
           </div>
           <span className="quotes-header-time">
-            {dateStr}
+            {dateStr || (
+              <span className="skeleton-cell pulse" style={{ width: 140, height: 10, display: "inline-block" }} />
+            )}
           </span>
         </div>
 

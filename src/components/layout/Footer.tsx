@@ -17,11 +17,9 @@ export default function Footer() {
           FOR INFORMATIONAL PURPOSES ONLY. NOT FINANCIAL ADVICE.
         </p>
         <div className="footer-links">
-          {["Privacy", "Terms", "Contact"].map(l => (
-            <a key={l} href="#" className="footer-link">
-              {l}
-            </a>
-          ))}
+          <a href="https://www.gsis.gr/" target="_blank" rel="noopener noreferrer" className="footer-link">
+            Developed for the GSIS Internship
+          </a>
         </div>
       </div>
     </footer>

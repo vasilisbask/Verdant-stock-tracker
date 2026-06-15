@@ -348,7 +348,7 @@ export default function WatchlistPage() {
 
   /* Add ticker */
   async function addTicker(sym: string) {
-    const s = sym.trim().toUpperCase().replace(/[^A-Z]/g, "");
+    const s = sym.trim().toUpperCase().replace(/[^A-Z0-9.\-^]/g, "");
     if (!s) return;
     if (watchlist.some(w => w.sym === s)) {
       setAddError(`${s} is already in your watchlist.`);
@@ -476,7 +476,7 @@ export default function WatchlistPage() {
               value={addInput}
               onChange={e => { setAddInput(e.target.value.toUpperCase()); setAddError(""); }}
               onKeyDown={e => { if (e.key === "Enter" && !isAdding) addTicker(addInput); }}
-              maxLength={6}
+              maxLength={12}
               disabled={isAdding}
             />
             <button className="wl-add-btn" onClick={() => addTicker(addInput)} disabled={isAdding}>
