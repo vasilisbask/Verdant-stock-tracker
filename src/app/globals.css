@@ -98,6 +98,8 @@ to { background: transparent; }
 .nav-link::after { content: ""; position: absolute; bottom: 0; left: 14px; right: 14px; height: 1px; background: var(--mint); transform: scaleX(0); transform-origin: right; transition: transform 0.3s ease; }
 .nav-link:hover, .sc-search-clear:hover, .sc-price, .modal-tab-btn:hover, .modal-tx-td.highlight { color: var(--ink); }
 .nav-link:hover::after { transform: scaleX(1); transform-origin: left; }
+.nav-link.active { color: var(--mint); }
+.nav-link.active::after { transform: scaleX(1); }
 .nav-divider { width: 1px; height: 18px; background: var(--rule); margin: 0 6px; }
 .ticker-tape-wrapper { border-bottom: 1px solid var(--rule); background: var(--bg-raised); overflow: hidden; padding-top: 101px; }
 .ticker-tape-item { display: inline-flex; align-items: center; gap: 10px; padding: 0 28px; border-right: 1px solid var(--rule); font-family: var(--f-mono); font-size: 11px; white-space: nowrap; }

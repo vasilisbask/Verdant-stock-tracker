@@ -150,11 +150,18 @@ export default function PillHeader() {
                 <span className="skeleton-cell pulse" style={{ width: "55px", height: "14px", borderRadius: "4px" }} />
               </div>
             ) : (
-              links.map(link => (
-                <a key={link.href} href={link.href} className="nav-link">
-                  {link.label}
-                </a>
-              ))
+              links.map(link => {
+                const isActive = pathname === link.href;
+                return (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    className={`nav-link ${isActive ? "active" : ""}`}
+                  >
+                    {link.label}
+                  </a>
+                );
+              })
             )}
 
             <span className="nav-divider" />
