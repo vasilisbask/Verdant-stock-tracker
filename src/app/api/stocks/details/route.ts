@@ -57,6 +57,12 @@ export async function GET(req: NextRequest) {
         yahooFinance.chart(symbol, { period1: start1Y.toISOString().split("T")[0], interval: "1d" }, { validateResult: false })
       ]);
 
+      results.forEach((r, idx) => {
+        if (r.status === "rejected") {
+          console.error(`[Yahoo Finance Details] Promise ${idx} rejected for ${symbol}:`, r.reason);
+        }
+      });
+
       if (results[0].status === "fulfilled") res1D = results[0].value;
       if (results[1].status === "fulfilled") res1W = results[1].value;
       if (results[2].status === "fulfilled") res1M = results[2].value;
